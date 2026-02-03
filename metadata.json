@@ -1,0 +1,7 @@
+{
+  "name": "Catálogo Instantáneo",
+  "description": "Herramienta profesional para que emprendedores creen y descarguen catálogos en PDF para WhatsApp sin registro.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
