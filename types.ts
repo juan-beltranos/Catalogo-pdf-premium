@@ -10,6 +10,7 @@ export interface Product {
   order?: number;
   featured?: boolean;
   hidden?: boolean;
+  quantity?: number;
 }
 
 
@@ -18,9 +19,10 @@ export type TemplateId = 'minimalist' | 'classic' | 'modern';
 export interface StoreInfo {
   name: string;
   whatsapp: string;
-  logo: string; // Base64
+  logo: string; 
   color: string;
   templateId: TemplateId;
+  showQuantityInPdf?: boolean
 }
 
 export type ViewMode = 'editor' | 'preview';

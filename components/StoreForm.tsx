@@ -84,6 +84,19 @@ export const StoreForm: React.FC<StoreFormProps> = ({ storeInfo, onUpdate }) => 
               )}
             </div>
           </div>
+          <div className="mt-4 flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+            <input
+              id="showQuantityInPdf"
+              type="checkbox"
+              checked={!!storeInfo.showQuantityInPdf}
+              onChange={(e) => onUpdate({ showQuantityInPdf: e.target.checked })}
+              className="w-4 h-4 text-blue-600"
+            />
+            <label htmlFor="showQuantityInPdf" className="text-sm text-slate-700 font-medium">
+              Mostrar cantidad en el PDF
+            </label>
+          </div>
+
         </div>
       </div>
     </div>

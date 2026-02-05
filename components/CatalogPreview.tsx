@@ -17,7 +17,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   previewRef,
   productsOverride,
 }) => {
-  const { templateId = 'minimalist', color: primaryColor = '#3b82f6' } = storeInfo;
+  const { templateId = 'minimalist', color: primaryColor = '#3b82f6', showQuantityInPdf = false } = storeInfo;
 
   // Template-specific styles
   const isMinimalist = templateId === 'minimalist';
@@ -28,7 +28,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
   const orderedProducts = useMemo(() => {
     const arr = [...sourceProducts]
-      .filter((p) => !p.hidden); 
+      .filter((p) => !p.hidden);
 
     arr.sort((a, b) => {
       const ao = typeof a.order === 'number' ? a.order : Number(a.id);
@@ -144,10 +144,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {storeInfo.logo && (
                 <div
                   className={`${isModern
-                      ? 'w-24 h-24 rounded-3xl rotate-3'
-                      : isMinimalist
-                        ? 'w-16 h-16 rounded-none border border-slate-200'
-                        : 'w-20 h-20 rounded-2xl'
+                    ? 'w-24 h-24 rounded-3xl rotate-3'
+                    : isMinimalist
+                      ? 'w-16 h-16 rounded-none border border-slate-200'
+                      : 'w-20 h-20 rounded-2xl'
                     } bg-white p-2 shadow-lg flex items-center justify-center`}
                 >
                   <img src={storeInfo.logo} alt="Logo" className="max-w-full max-h-full object-contain" />
@@ -169,8 +169,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             {storeInfo.whatsapp && (
               <div
                 className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold ${isMinimalist
-                    ? 'bg-slate-100 text-slate-900 border border-slate-200'
-                    : 'bg-black/20 text-white border border-white/20'
+                  ? 'bg-slate-100 text-slate-900 border border-slate-200'
+                  : 'bg-black/20 text-white border border-white/20'
                   } backdrop-blur-md`}
               >
                 <Phone className="w-4 h-4" />
@@ -193,10 +193,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               >
                 <div
                   className={`aspect-[4/3] w-full overflow-hidden shadow-sm relative flex items-center justify-center ${isModern
-                      ? 'rounded-[2rem]'
-                      : isMinimalist
-                        ? 'rounded-none border border-slate-100'
-                        : 'rounded-2xl border border-slate-100'
+                    ? 'rounded-[2rem]'
+                    : isMinimalist
+                      ? 'rounded-none border border-slate-100'
+                      : 'rounded-2xl border border-slate-100'
                     }`}
                 >
                   {product.featured && (
@@ -206,7 +206,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       w-8 h-8 rounded-full
                       bg-yellow-400 shadow-md"
                       style={{
-                        border: "2px solid #fff", 
+                        border: "2px solid #fff",
                       }}
                     >
                       {/* ✅ SVG estrella (no texto) */}
@@ -238,10 +238,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   <div
                     data-price-tag="true"
                     className={`hidden sm:flex absolute bottom-4 px-4 py-2 font-bold shadow-lg ${isModern
-                        ? 'bg-white rounded-2xl text-slate-900'
-                        : isMinimalist
-                          ? 'bg-slate-900 text-white rounded-none'
-                          : 'bg-white rounded-full text-slate-900'
+                      ? 'bg-white rounded-2xl text-slate-900'
+                      : isMinimalist
+                        ? 'bg-slate-900 text-white rounded-none'
+                        : 'bg-white rounded-full text-slate-900'
                       }`}
                   >
                     {formatCurrency(product.price)}
@@ -252,10 +252,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 <div
                   data-price-mobile="true"
                   className={`sm:hidden -mt-1 font-bold ${isClassic ? 'text-center' : 'text-left'} ${isMinimalist
-                      ? 'text-sm uppercase tracking-wide text-slate-900'
-                      : isModern
-                        ? 'text-lg text-slate-900'
-                        : 'text-base text-slate-800'
+                    ? 'text-sm uppercase tracking-wide text-slate-900'
+                    : isModern
+                      ? 'text-lg text-slate-900'
+                      : 'text-base text-slate-800'
                     }`}
                 >
                   {formatCurrency(product.price)}
@@ -268,6 +268,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   >
                     {product.name}
                   </h3>
+                  {showQuantityInPdf && (product.quantity ?? 0) > 0 && (
+                    <div className={`mt-1 text-slate-600 ${isMinimalist ? 'text-[10px]' : 'text-xs'}`}>
+                      Stock : <span className="font-semibold">{product.quantity}</span>
+                    </div>
+                  )}
 
                   {product.description && (
                     <div

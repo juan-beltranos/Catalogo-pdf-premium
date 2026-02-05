@@ -85,6 +85,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     name: '',
     price: '',
     description: '',
+    quantity: '',
     image: '',
     imageId: '',
     category: '', // NUEVO
@@ -152,7 +153,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   }, [filteredProducts]);
 
   const resetForm = () => {
-    setFormData({ name: '', price: '', description: '', image: '', imageId: '', category: '', featured: false, hidden: false });
+    setFormData({ name: '', price: '', quantity: '', description: '', image: '', imageId: '', category: '', featured: false, hidden: false });
     setCategoryMode("select");
     setNewCategory("");
     setIsAdding(false);
@@ -165,6 +166,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setFormData({
       name: product.name,
       price: product.price.toString(),
+      quantity: product.quantity === undefined || product.quantity === null
+        ? ''
+        : String(product.quantity),
       description: product.description,
       image: product.image || '',
       imageId: product.imageId || '',
@@ -203,6 +207,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     const productData: Partial<Product> = {
       name: formData.name,
       price: parseFloat(formData.price) || 0,
+      quantity:
+        formData.quantity.trim() === ''
+          ? undefined
+          : Math.max(0, parseInt(formData.quantity, 10) || 0),
       description: formData.description,
       image: formData.image,
       imageId: formData.imageId,
@@ -218,6 +226,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         id: Date.now().toString(),
         name: productData.name as string,
         price: productData.price as number,
+        quantity: (productData.quantity as number) ?? 0,
         description: productData.description as string,
         image: productData.image as string,
         imageId: productData.imageId as string,
@@ -246,6 +255,33 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
   const isEditing = editingId !== null;
 
+  const DEMO_IMAGE_URL = "/zapato.png";
+
+  const seedProducts = (count = 100) => {
+    const baseOrder = products.length;
+
+    for (let i = 0; i < count; i++) {
+      const id =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${i}`;
+
+      onAdd({
+        id,
+        name: `Producto demo ${baseOrder + i + 1}`,
+        price: (i + 1) * 10,
+        description: `<p>Demo</p>`,
+        image: DEMO_IMAGE_URL,
+        imageId: "",
+        category: ["Cat A", "Cat B", "Cat C", "Cat D", "Cat E"][i % 5],
+        order: baseOrder + i,
+        featured: i % 10 === 0,
+        hidden: false,
+      });
+    }
+  };
+
+
   return (
     <div className="space-y-4 mb-24">
       {/* Header */}
@@ -254,6 +290,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <Package className="w-5 h-5 text-blue-600" />
           Tus Productos
         </h2>
+        {/* <button
+          onClick={() => seedProducts(100)}
+          className="bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-colors"
+        >
+          Cargar 100 demo
+        </button> */}
 
         <div className="flex items-center gap-2">
           {/* NUEVO: botones PDF opcionales */}
@@ -440,6 +482,20 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                   />
                 </div>
 
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Stock disponible"
+                    value={formData.quantity}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, quantity: e.target.value }))
+                    }
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
                 <div className="flex items-center gap-3">
                   <input
                     id="featured"
@@ -585,7 +641,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       {/* 🔹 CONTENIDO */}
                       <div className="flex gap-4">
                         <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 relative">
-                       
+
                           {product.hidden && (
                             <div className="absolute top-2 left-2 text-[11px] bg-slate-700 text-white px-2 py-1 rounded-full">
                               Oculto
@@ -629,6 +685,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                             {formatCurrency(product.price)}
                           </p>
 
+                          <p className="text-xs text-slate-500 mt-1">
+                            Cantidad: <span className="font-semibold">{product.quantity ?? 0}</span>
+                          </p>
+
                           <div
                             className="text-xs text-slate-500 line-clamp-2 mt-1 prose prose-sm max-w-none"
                             dangerouslySetInnerHTML={{
@@ -638,7 +698,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           />
                         </div>
                       </div>
-             
+
                     </motion.div>
                   )}
                 </SortableCard>
