@@ -227,7 +227,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
 
                   {(product.image || product.imageId) ? (
-                    <ProductThumb product={product} className="max-w-full max-h-full object-contain block" />
+                    <ProductThumb product={product} className="max-w-[200px] max-h-full object-contain mx-auto block" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-200">
                       <span className="text-4xl font-bold">Sin Foto</span>

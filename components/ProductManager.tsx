@@ -282,6 +282,102 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   };
 
 
+  const importInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  type ImportItem = {
+    id?: string;
+    name?: string;
+    price?: number | string;
+    description?: string;
+    image?: string;      // URL
+    imageId?: string;
+    category?: string;
+    quantity?: number;
+    featured?: boolean;
+    hidden?: boolean;
+  };
+
+  const normalizeHtml = (s: any) => {
+    const str = typeof s === "string" ? s : "";
+    // Si viene texto plano, lo envolvemos en <p>...</p> para tu render con dangerouslySetInnerHTML
+    if (!str.trim()) return "";
+    const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(str);
+    return looksLikeHtml ? str : `<p>${str}</p>`;
+  };
+
+  const handleImportJsonFile = async (file: File) => {
+    const text = await file.text();
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      alert("El archivo no es un JSON válido.");
+      return;
+    }
+
+    // Soporta: array directo o {products:[...]}
+    const items: ImportItem[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.products)
+        ? parsed.products
+        : [];
+
+    if (!items.length) {
+      alert("No encontré productos. El JSON debe ser un array o tener { products: [] }");
+      return;
+    }
+
+    const baseOrder = products.length;
+
+    const sorted = [...items].sort((a, b) => {
+      const an = (a.name ?? "").toString().trim().toLocaleLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const bn = (b.name ?? "").toString().trim().toLocaleLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return an.localeCompare(bn, "es");
+    });
+
+    sorted.forEach((it, idx) => {
+      const name = (it.name ?? "").toString().trim();
+      if (!name) return;
+
+      const priceNum =
+        typeof it.price === "number"
+          ? it.price
+          : Number(String(it.price ?? "").replace(/[^\d.]/g, "")) || 0;
+
+      const id =
+        (it.id && String(it.id)) ||
+        (typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${idx}`);
+
+      onAdd({
+        id,
+        name,
+        price: priceNum,
+        quantity: Number.isFinite(it.quantity as any) ? Number(it.quantity) : 0,
+        description: normalizeHtml(it.description),
+        image: (it.image ?? "").toString().trim(),   // ✅ URL pública aquí
+        imageId: (it.imageId ?? "").toString().trim(),
+        category: (it.category ?? "").toString().trim(),
+        order: baseOrder + idx,
+        featured: !!it.featured,
+        hidden: !!it.hidden,
+      });
+    });
+
+    // Limpia el input para poder re-importar el mismo archivo si quieres
+    if (importInputRef.current) importInputRef.current.value = "";
+  };
+
+  const handleImportJsonClick = () => {
+    importInputRef.current?.click();
+  };
+
+
+
   return (
     <div className="space-y-4 mb-24">
       {/* Header */}
@@ -296,6 +392,25 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         >
           Cargar 100 demo
         </button> */}
+
+        {/*
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleImportJsonFile(f);
+          }}
+        />
+        <button
+          onClick={handleImportJsonClick}
+          className="bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100"
+        >
+          Importar JSON
+        </button>
+ */}
 
         <div className="flex items-center gap-2">
           {/* NUEVO: botones PDF opcionales */}
