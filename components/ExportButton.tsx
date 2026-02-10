@@ -204,7 +204,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       imgsAll.forEach((img) => {
         img.style.width = "auto";
         img.style.height = "auto";
-        img.style.maxWidth = "300px";
+        img.style.maxWidth = "100%";
         img.style.maxHeight = "100%";
         img.style.objectFit = "contain";
         img.style.objectPosition = "center";
@@ -215,7 +215,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       clone.querySelectorAll("img").forEach((img) => {
         const e = img as HTMLImageElement;
         e.style.maxWidth = "300px";
-        e.style.width = "300px";
+        e.style.width = "100%";
         e.style.height = "auto";
         e.style.objectFit = "contain";
         e.style.margin = "0 auto";
@@ -332,14 +332,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
         const pageImg = pageCanvas.toDataURL("image/jpeg", 0.95);
         const sliceHmm = sliceHeight / pxPerMm;
+
         if (pageIndex > 0) pdf.addPage();
-
-        const shouldCenterVertically = pageIndex >= 1 && sliceHmm < usableHmm;
-        const y = shouldCenterVertically
-          ? margin + (usableHmm - sliceHmm) / 2
-          : margin;
-
-        pdf.addImage(pageImg, "JPEG", margin, y, usableWmm, sliceHmm, undefined, "FAST");
+        pdf.addImage(pageImg, "JPEG", margin, margin, usableWmm, sliceHmm, undefined, "FAST");
 
         offsetY = endY;
         pageIndex++;
