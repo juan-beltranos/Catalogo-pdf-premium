@@ -112,15 +112,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       ) as HTMLElement[];
 
       cards.forEach((card, idx) => {
-        // card.style.display = "inline-block";
-        // card.style.verticalAlign = "top";
-        // card.style.width = "48%";
-        // card.style.marginBottom = "24px";
-        // card.style.marginRight = idx % 2 === 0 ? "4%" : "0";
-
-        // (Opcional) hints de no-corte por si luego cambias de estrategia
-        card.style.breakInside = "avoid";
-        (card.style as any).pageBreakInside = "avoid";
+        card.style.display = "inline-block";
+        card.style.verticalAlign = "top";
+        card.style.width = "48%";
+        card.style.marginBottom = "24px";
+        card.style.marginRight = idx % 2 === 0 ? "4%" : "0";
       });
 
       // =========================
@@ -212,16 +208,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         img.style.display = "block";
       });
 
-      // 🔹 Forzar tamaño de imagen SOLO para PDF
-      clone.querySelectorAll("img").forEach((img) => {
-        const e = img as HTMLImageElement;
-        // e.style.maxWidth = "300px";
-        // e.style.width = "100%";
-        e.style.height = "auto";
-        e.style.objectFit = "contain";
-        e.style.margin = "0 auto";
-        e.style.display = "block";
-      });
+      // C) Esperar carga real
+      await Promise.all(
+        imgs.map((img) =>
+          img.complete && img.naturalWidth > 0
+            ? Promise.resolve()
+            : new Promise<void>((res) => {
+              img.onload = () => res();
+              img.onerror = () => res();
+            })
+        )
+      );
 
       // =========================
       // 4) CAPTURA
@@ -361,6 +358,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       printRoot.remove();
     }
   };
+
 
   const handleDownloadPdfAll = async () => {
     try {
