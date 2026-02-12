@@ -124,6 +124,46 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   .catalog-html tr:nth-child(even) td {
     background: #f8fafc;
   }
+         /* ====== SOLO PDF (html2canvas NO respeta @media print) ====== */
+  .pdf-mode .products-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 0 !important;         /* si quieres exacto como tailwind gap-x-?? */
+    row-gap: 3rem !important;         /* gap-y-12 = 3rem */
+  }
+
+  /* Evitar cortes */
+  .pdf-mode .product-pdf {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Precios: siempre tag y nunca móvil */
+  .pdf-mode [data-price-mobile="true"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .pdf-mode [data-price-tag="true"] {
+    display: flex !important;
+    position: absolute !important;
+    right: 16px !important;
+    bottom: 16px !important;
+    z-index: 999 !important;
+  }
+
+  /* Imágenes: NO fuerces maxWidth fijo (eso te cambia el preview) */
+  .pdf-mode img {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
 `}</style>
 
         {/* Header Section */}

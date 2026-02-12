@@ -45,6 +45,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const original = targetRef.current;
 
       const clone = original.cloneNode(true) as HTMLElement;
+      clone.classList.add("pdf-mode");
       clone.style.width = `${EXPORT_WIDTH_PX}px`;
       clone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
       clone.style.margin = "0";
@@ -102,20 +103,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       // 1) FORZAR LAYOUT 2 COLUMNAS (html2canvas NO respeta @media print)
       // =========================
       const grid = clone.querySelector(".products-grid") as HTMLElement | null;
-      if (grid) {
-        grid.style.display = "block";
-      }
+      // if (grid) {
+      //   grid.style.display = "block";
+      // }
 
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf")
       ) as HTMLElement[];
 
       cards.forEach((card, idx) => {
-        card.style.display = "inline-block";
-        card.style.verticalAlign = "top";
-        card.style.width = "48%";
-        card.style.marginBottom = "24px";
-        card.style.marginRight = idx % 2 === 0 ? "4%" : "0";
+        // card.style.display = "inline-block";
+        // card.style.verticalAlign = "top";
+        // card.style.width = "48%";
+        // card.style.marginBottom = "24px";
+        // card.style.marginRight = idx % 2 === 0 ? "4%" : "0";
 
         // (Opcional) hints de no-corte por si luego cambias de estrategia
         card.style.breakInside = "avoid";
@@ -204,8 +205,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       imgsAll.forEach((img) => {
         img.style.width = "auto";
         img.style.height = "auto";
-        img.style.maxWidth = "100%";
-        img.style.maxHeight = "100%";
+        // img.style.maxWidth = "300px";
+        // img.style.maxHeight = "100%";
         img.style.objectFit = "contain";
         img.style.objectPosition = "center";
         img.style.display = "block";
@@ -214,8 +215,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       // 🔹 Forzar tamaño de imagen SOLO para PDF
       clone.querySelectorAll("img").forEach((img) => {
         const e = img as HTMLImageElement;
-        e.style.maxWidth = "300px";
-        e.style.width = "100%";
+        // e.style.maxWidth = "300px";
+        // e.style.width = "100%";
         e.style.height = "auto";
         e.style.objectFit = "contain";
         e.style.margin = "0 auto";
@@ -225,6 +226,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       // =========================
       // 4) CAPTURA
       // =========================
+      if ((document as any).fonts?.ready) {
+        await (document as any).fonts.ready;
+      }
+
       const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
@@ -235,7 +240,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         windowHeight: clone.scrollHeight,
         scrollX: 0,
         scrollY: 0,
+        onclone: (doc) => {
+          const el = doc.getElementById("catalog-capture-area");
+          el?.classList.add("pdf-mode");
+        },
       });
+
 
       // =========================
       // 5) PDF PAGINADO (SMART: NO CORTAR TARJETAS) ✅ FIX SCALE + RECT
@@ -352,7 +362,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     }
   };
 
-
   const handleDownloadPdfAll = async () => {
     try {
       setLoading(true);
@@ -397,40 +406,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF por categoría.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDownloadPdfAllCategories = async () => {
-    try {
-      setLoading(true);
-
-      const groups = groupByCategory(products);
-
-      // Descarga 1 PDF por categoría (varios archivos)
-      for (const [category] of groups) {
-        const outBase = `${fileName}-${slug(category)}`;
-        const { blob, fileName: outName } = await generatePdf({
-          category,
-          overrideFileName: outBase,
-        });
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = outName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-
-        // pequeño respiro para evitar que algunos navegadores bloqueen múltiples descargas
-        await new Promise((r) => setTimeout(r, 250));
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Error generando/descargando PDFs por categoría.");
     } finally {
       setLoading(false);
     }
