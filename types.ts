@@ -19,10 +19,12 @@ export type TemplateId = 'minimalist' | 'classic' | 'modern';
 export interface StoreInfo {
   name: string;
   whatsapp: string;
-  logo: string; 
+  facebook?: string;
+  instagram?: string;
   color: string;
+  logo?: string;
   templateId: TemplateId;
-  showQuantityInPdf?: boolean
+  showQuantityInPdf?: boolean;
 }
 
 export type ViewMode = 'editor' | 'preview';

@@ -28,6 +28,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
     const EXPORT_WIDTH_PX = 794;
 
+    const cleanPhoneForWa = (v: string) => (v || "").replace(/[^\d]/g, "");
+    const encodeWaText = (t: string) => encodeURIComponent(t);
+
     const printRoot = document.createElement("div");
     printRoot.style.position = "fixed";
     printRoot.style.left = "-10000px";
@@ -38,7 +41,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     printRoot.style.contain = "layout style paint";
     document.body.appendChild(printRoot);
 
-    // Para liberar objectURLs creadas solo para el export
     const objectUrlsToRevoke: string[] = [];
 
     try {
@@ -60,7 +62,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       printRoot.appendChild(clone);
 
-      // ✅ En export: siempre mostrar tag absoluto y ocultar precio móvil (sin depender de sm:)
+      // ✅ En export: siempre mostrar tag absoluto y ocultar precio móvil
       clone.querySelectorAll('[data-price-mobile="true"]').forEach((el) => {
         const e = el as HTMLElement;
         e.style.display = "none";
@@ -85,10 +87,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       if (opts?.category) {
         const wanted = opts.category;
 
-        const cards = Array.from(
-          clone.querySelectorAll(".product-pdf")
-        ) as HTMLElement[];
-
+        const cards = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
         cards.forEach((card) => {
           const cat = (card.dataset.category || "").trim() || "Sin categoría";
           const normalize = (s: string) => s.trim().toLowerCase();
@@ -100,35 +99,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       }
 
       // =========================
-      // 1) FORZAR LAYOUT 2 COLUMNAS (html2canvas NO respeta @media print)
+      // 1) FORZAR LAYOUT + NO CORTES
       // =========================
-      const grid = clone.querySelector(".products-grid") as HTMLElement | null;
-      // if (grid) {
-      //   grid.style.display = "block";
-      // }
-
-      const cards = Array.from(
-        clone.querySelectorAll(".product-pdf")
-      ) as HTMLElement[];
-
-      cards.forEach((card, idx) => {
-        // card.style.display = "inline-block";
-        // card.style.verticalAlign = "top";
-        // card.style.width = "48%";
-        // card.style.marginBottom = "24px";
-        // card.style.marginRight = idx % 2 === 0 ? "4%" : "0";
-
-        // (Opcional) hints de no-corte por si luego cambias de estrategia
+      const cards = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
+      cards.forEach((card) => {
         card.style.breakInside = "avoid";
         (card.style as any).pageBreakInside = "avoid";
       });
 
       // =========================
-      // 2) PRECIO SIEMPRE ENCIMA (etiqueta absoluta) + ocultar precio móvil
+      // 2) PRECIO SIEMPRE ENCIMA + ocultar precio móvil (si existiera)
       // =========================
       clone.querySelectorAll(".price-tag").forEach((el) => {
         const e = el as HTMLElement;
-        e.style.display = "flex"; // fuerza visible aunque Tailwind lo oculte
+        e.style.display = "flex";
         e.style.position = "absolute";
         e.style.right = "16px";
         e.style.bottom = "16px";
@@ -142,17 +126,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       });
 
       // =========================
-      // 3) ASEGURAR QUE TODAS LAS IMÁGENES (URL + IndexedDB) CARGUEN ANTES DE CAPTURAR
+      // 3) ASEGURAR IMÁGENES (URL + IndexedDB)
       // =========================
       const imgsAll = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
 
-      // A) Si hay imágenes por IndexedDB (data-imgid) y no tienen src, llenarlas
       await Promise.all(
         imgsAll.map(async (img) => {
           const hasSrc = !!img.getAttribute("src")?.trim();
           const id = img.dataset.imgid;
 
-          // fuerza eager y crossorigin
           img.setAttribute("loading", "eager");
           img.setAttribute("decoding", "sync");
           img.crossOrigin = "anonymous";
@@ -168,18 +150,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         })
       );
 
-      // B) Esperar carga de TODAS las imágenes
       const waitLoad = (img: HTMLImageElement) =>
         img.complete && img.naturalWidth > 0
           ? Promise.resolve()
           : new Promise<void>((res) => {
             img.onload = () => res();
-            img.onerror = () => res(); // no bloquea
+            img.onerror = () => res();
           });
 
       await Promise.all(imgsAll.map(waitLoad));
 
-      // C) Fallback: si alguna sigue sin cargar, la bajamos como blob y la ponemos como blob URL
       await Promise.all(
         imgsAll.map(async (img) => {
           if (img.naturalWidth > 0) return;
@@ -196,32 +176,83 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
             img.src = objUrl;
             await waitLoad(img);
           } catch {
-            // si no se pudo, lo dejamos sin imagen
+            // no bloquea
           }
         })
       );
 
-      // D) Estilos "contain" para que no se deformen
       imgsAll.forEach((img) => {
         img.style.width = "auto";
         img.style.height = "auto";
-        // img.style.maxWidth = "300px";
-        // img.style.maxHeight = "100%";
         img.style.objectFit = "contain";
         img.style.objectPosition = "center";
         img.style.display = "block";
       });
 
-      // 🔹 Forzar tamaño de imagen SOLO para PDF
-      clone.querySelectorAll("img").forEach((img) => {
-        const e = img as HTMLImageElement;
-        // e.style.maxWidth = "300px";
-        // e.style.width = "100%";
-        e.style.height = "auto";
-        e.style.objectFit = "contain";
-        e.style.margin = "0 auto";
-        e.style.display = "block";
-      });
+      // =========================
+      // 3.5) CAPTURAR LINKS ANTES DEL CANVAS (REDES + PRODUCTOS)
+      // =========================
+      type LinkArea = { url: string; left: number; top: number; width: number; height: number };
+      const linkAreasCss: LinkArea[] = [];
+
+      const rootRectForLinks = clone.getBoundingClientRect();
+
+      // A) Redes
+      const socialLinks = Array.from(
+        clone.querySelectorAll('a[data-pdf-link="social"]')
+      ) as HTMLAnchorElement[];
+
+      for (const a of socialLinks) {
+        const href = (a.getAttribute("href") || "").trim();
+        if (!href) continue;
+
+        const rect = a.getBoundingClientRect();
+        const left = rect.left - rootRectForLinks.left;
+        const top = rect.top - rootRectForLinks.top;
+
+        if (rect.width <= 0 || rect.height <= 0) continue;
+
+        const url = href.startsWith("http") ? href : `https://${href}`;
+        linkAreasCss.push({ url, left, top, width: rect.width, height: rect.height });
+      }
+
+      // B) WhatsApp del negocio (lo lee del DOM clonado)
+      const businessWa = cleanPhoneForWa(
+        (clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "")
+      );
+
+      // C) Productos -> WhatsApp con mensaje
+      const productTargets = Array.from(
+        clone.querySelectorAll('[data-pdf-link="product"]')
+      ) as HTMLElement[];
+
+      if (businessWa) {
+        for (const el of productTargets) {
+          const name = (el.dataset.productName || "").trim();
+          const price = (el.dataset.productPrice || "").trim();
+
+          if (!name) continue;
+
+          const msg = `Hola, quiero el producto: ${name}${price ? ` (Precio: ${price})` : ""}`;
+          const url = `https://wa.me/${businessWa}?text=${encodeWaText(msg)}`;
+
+          const rect = el.getBoundingClientRect();
+          const left = rect.left - rootRectForLinks.left;
+          const top = rect.top - rootRectForLinks.top;
+
+          if (rect.width <= 0 || rect.height <= 0) continue;
+
+          // Si quieres un poquito más grande el área clicable:
+          const pad = 2;
+          linkAreasCss.push({
+            url,
+            left: left - pad,
+            top: top - pad,
+            width: rect.width + pad * 2,
+            height: rect.height + pad * 2,
+          });
+        }
+      }
 
       // =========================
       // 4) CAPTURA
@@ -246,9 +277,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         },
       });
 
-
       // =========================
-      // 5) PDF PAGINADO (SMART: NO CORTAR TARJETAS) ✅ FIX SCALE + RECT
+      // 5) PDF PAGINADO (SMART: NO CORTAR TARJETAS)
       // =========================
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
 
@@ -259,23 +289,18 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const usableWmm = pageW - margin * 2;
       const usableHmm = pageH - margin * 2;
 
-      // Relación px↔mm usando el canvas (esto ya está bien)
       const pxPerMm = canvas.width / usableWmm;
       const pageHeightPx = Math.floor(usableHmm * pxPerMm);
 
-      // 🔥 IMPORTANTE: convertir medidas del DOM (CSS px) a canvas px
-      // html2canvas(scale:2) => canvas es más grande que el DOM
       const domHeight = clone.scrollHeight || clone.getBoundingClientRect().height || 1;
       const scaleY = canvas.height / domHeight;
 
-      // Helper para obtener margen bottom real (para no cortar por el borde)
       const getMarginBottom = (el: HTMLElement) => {
         const mb = window.getComputedStyle(el).marginBottom;
         const n = parseFloat(mb || "0");
         return Number.isFinite(n) ? n : 0;
       };
 
-      // Breakpoints (en CANVAS px) donde sí se permite cortar: al final de cada tarjeta
       const bpSet = new Set<number>();
       bpSet.add(0);
       bpSet.add(canvas.height);
@@ -285,15 +310,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       for (const card of cardsAfterLayout) {
         const r = card.getBoundingClientRect();
-
-        // bottom en CSS px (relativo al clone)
-        const bottomCss =
-          (r.bottom - rootRect.top) + getMarginBottom(card);
-
-        // convertir a canvas px
+        const bottomCss = (r.bottom - rootRect.top) + getMarginBottom(card);
         const bottomCanvas = Math.floor(bottomCss * scaleY);
-
-        // pequeño "gutter" para evitar cortes por rounding (2~6px)
         bpSet.add(Math.max(0, Math.min(canvas.height, bottomCanvas - 4)));
       }
 
@@ -302,7 +320,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         .map((v) => Math.max(0, Math.min(canvas.height, Math.floor(v))))
         .sort((a, b) => a - b);
 
-      // Devuelve el mayor breakpoint <= limit y > offsetY
       const pickBreak = (offsetY: number, limit: number) => {
         let chosen = -1;
         for (let i = 0; i < breakpoints.length; i++) {
@@ -319,8 +336,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       while (offsetY < canvas.height) {
         const idealEnd = offsetY + pageHeightPx;
         let endY = pickBreak(offsetY, idealEnd);
-
-        // Fallback: si una tarjeta es más alta que una página, no existe breakpoint dentro
         if (endY === -1) endY = Math.min(idealEnd, canvas.height);
 
         const sliceHeight = endY - offsetY;
@@ -334,17 +349,50 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
-        ctx.drawImage(
-          canvas,
-          0, offsetY, canvas.width, sliceHeight,
-          0, 0, canvas.width, sliceHeight
-        );
+        ctx.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
 
         const pageImg = pageCanvas.toDataURL("image/jpeg", 0.95);
         const sliceHmm = sliceHeight / pxPerMm;
 
         if (pageIndex > 0) pdf.addPage();
         pdf.addImage(pageImg, "JPEG", margin, margin, usableWmm, sliceHmm, undefined, "FAST");
+
+        // =========================
+        // 6) LINKS CLICABLES SOBRE LA IMAGEN (REDES + PRODUCTOS)
+        // =========================
+        const domWidth = clone.getBoundingClientRect().width || 1;
+        const domHeight2 = clone.scrollHeight || clone.getBoundingClientRect().height || 1;
+
+        const scaleX = canvas.width / domWidth;
+        const scaleY2 = canvas.height / domHeight2;
+
+        for (const la of linkAreasCss) {
+          const xCanvas = la.left * scaleX;
+          const yCanvas = la.top * scaleY2;
+          const wCanvas = la.width * scaleX;
+          const hCanvas = la.height * scaleY2;
+
+          const sliceTop = offsetY;
+          const sliceBottom = endY;
+
+          const linkTop = yCanvas;
+          const linkBottom = yCanvas + hCanvas;
+
+          const intersects = linkBottom > sliceTop && linkTop < sliceBottom;
+          if (!intersects) continue;
+
+          const visibleTop = Math.max(linkTop, sliceTop);
+          const visibleBottom = Math.min(linkBottom, sliceBottom);
+          const visibleH = visibleBottom - visibleTop;
+          if (visibleH <= 0) continue;
+
+          const xMm = margin + (xCanvas / pxPerMm);
+          const yMm = margin + ((visibleTop - sliceTop) / pxPerMm);
+          const wMm = wCanvas / pxPerMm;
+          const hMm = visibleH / pxPerMm;
+
+          pdf.link(xMm, yMm, wMm, hMm, { url: la.url });
+        }
 
         offsetY = endY;
         pageIndex++;

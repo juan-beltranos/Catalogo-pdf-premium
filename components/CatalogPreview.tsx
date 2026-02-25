@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
 import { Product, StoreInfo } from '../types';
 import { formatCurrency } from '../constants';
-import { Phone } from 'lucide-react';
+import { Phone, Facebook, Instagram, MessageCircle } from 'lucide-react';
 import { ProductThumb } from './ProductThumb';
+import { facebookUrl, instagramUrl, facebookLabel, instagramLabel } from '@/helper/social';
+
 
 interface CatalogPreviewProps {
   storeInfo: StoreInfo;
@@ -205,18 +207,74 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 </p>
               </div>
             </div>
+            <div className="flex flex-col items-center md:items-end gap-3">
+              {/* ICONOS (solo iconos) */}
+              {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
+                <div
+                  className={`flex items-center gap-3 ${isMinimalist ? 'text-slate-600' : 'text-white'}`}
+                >
+                  {/* WhatsApp */}
+                  {storeInfo.whatsapp && (
+                    <a
+                      href={`https://wa.me/${storeInfo.whatsapp}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="WhatsApp"
+                      title="WhatsApp"
+                      data-pdf-link="social"
+                      className={`p-2 rounded-full transition-colors ${isMinimalist ? 'hover:bg-slate-100' : 'hover:bg-white/15'
+                        }`}
+                    >
+                      <MessageCircle className="w-5 h-5" />
+                    </a>
+                  )}
 
-            {storeInfo.whatsapp && (
-              <div
-                className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold ${isMinimalist
-                  ? 'bg-slate-100 text-slate-900 border border-slate-200'
-                  : 'bg-black/20 text-white border border-white/20'
-                  } backdrop-blur-md`}
-              >
-                <Phone className="w-4 h-4" />
-                <span>{storeInfo.whatsapp}</span>
-              </div>
-            )}
+                  {storeInfo.facebook && (
+                    <a
+                      data-pdf-link="social"
+                      href={facebookUrl(storeInfo.facebook)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Facebook"
+                      title={facebookLabel(storeInfo.facebook)}
+                      className={`p-2 rounded-full transition-colors ${isMinimalist ? "hover:bg-slate-100" : "hover:bg-white/15"
+                        }`}
+                    >
+                      <Facebook className="w-5 h-5" />
+                    </a>
+                  )}
+
+                  {storeInfo.instagram && (
+                    <a
+                      data-pdf-link="social"
+                      href={instagramUrl(storeInfo.instagram)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Instagram"
+                      title={instagramLabel(storeInfo.instagram)}
+                      className={`p-2 rounded-full transition-colors ${isMinimalist ? "hover:bg-slate-100" : "hover:bg-white/15"
+                        }`}
+                    >
+                      <Instagram className="w-5 h-5" />
+                    </a>
+                  )}
+
+                </div>
+              )}
+
+              {/* Mantener tu badge con número (opcional) */}
+              {storeInfo.whatsapp && (
+                <div
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold ${isMinimalist
+                    ? 'bg-slate-100 text-slate-900 border border-slate-200'
+                    : 'bg-black/20 text-white border border-white/20'
+                    } backdrop-blur-md`}
+                >
+                  <Phone className="w-4 h-4" />
+                  <span data-store-whatsapp="true">{storeInfo.whatsapp}</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {!isMinimalist && !isModern && <div className="absolute -bottom-6 left-0 right-0 h-12 bg-white rounded-t-[3rem]" />}
@@ -230,6 +288,9 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 key={product.id}
                 className={`flex flex-col gap-4 group product-pdf ${isClassic ? 'items-center text-center' : ''}`}
                 data-category={(product.category || 'Sin categoría').trim()}
+                data-pdf-link="product"
+                data-product-name={product.name}
+                data-product-price={String(product.price ?? '')}
               >
                 <div
                   className={`aspect-[4/3] w-full overflow-hidden shadow-sm relative flex items-center justify-center ${isModern
@@ -343,16 +404,70 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
         {/* Footer info */}
         <div className={`mt-auto p-10 border-t border-slate-50 ${isClassic ? 'bg-slate-50/50' : ''}`}>
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-slate-400 text-[10px] uppercase tracking-widest font-medium">
-            <p>© {new Date().getFullYear()} {storeInfo.name || 'Empresa'}</p>
-            <div className="flex items-center gap-2">
-              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-              <p>Diseño: {templateId}</p>
-              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-              <p>Catálogo - Intelia SB</p>
+          <div className="flex flex-col gap-4">
+
+            {/* Redes Sociales */}
+            {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
+              <div className="flex flex-wrap justify-center items-center gap-6 text-slate-600 text-xs font-medium">
+
+                {/* WhatsApp */}
+                {storeInfo.whatsapp && (
+                  <a
+                    href={`https://wa.me/${storeInfo.whatsapp}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-pdf-link="social"
+                    className="flex items-center gap-2 hover:text-green-600 transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{storeInfo.whatsapp}</span>
+                  </a>
+                )}
+
+                {/* Facebook */}
+                {storeInfo.facebook && (
+                  <a
+                    data-pdf-link="social"
+                    href={facebookUrl(storeInfo.facebook)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 hover:text-blue-600 transition-colors"
+                  >
+                    <Facebook className="w-4 h-4" />
+                    <span className="break-all">{facebookLabel(storeInfo.facebook)}</span>
+                  </a>
+                )}
+
+                {/* Instagram */}
+                {storeInfo.instagram && (
+                  <a
+                    data-pdf-link="social"
+                    href={instagramUrl(storeInfo.instagram)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 hover:text-pink-600 transition-colors"
+                  >
+                    <Instagram className="w-4 h-4" />
+                    <span className="break-all">{instagramLabel(storeInfo.instagram)}</span>
+                  </a>
+                )}
+
+              </div>
+            )}
+            {/* Línea inferior */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-slate-400 text-[10px] uppercase tracking-widest font-medium">
+              <p>© {new Date().getFullYear()} {storeInfo.name || 'Empresa'}</p>
+              <div className="flex items-center gap-2">
+                <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                <p>Diseño: {templateId}</p>
+                <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                <p>Catálogo - Intelia SB</p>
+              </div>
             </div>
+
           </div>
         </div>
+
       </div>
     </div>
   );
