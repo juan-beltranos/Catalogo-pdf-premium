@@ -172,6 +172,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   object-position: center !important;
   display: block !important;
 }
+  .pdf-mode .product-pdf h3 {
+  font-size: 17px !important; 
+  line-height: 1.15 !important;
+}
 `}</style>
 
         {/* Header Section */}
