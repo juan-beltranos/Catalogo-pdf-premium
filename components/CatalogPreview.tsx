@@ -153,19 +153,25 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     display: flex !important;
     position: absolute !important;
     right: 16px !important;
-    bottom: 16px !important;
+    bottom: 1px !important;
     z-index: 999 !important;
   }
 
-  /* Imágenes: NO fuerces maxWidth fijo (eso te cambia el preview) */
-  .pdf-mode img {
-    max-width: 100% !important;
-    max-height: 100% !important;
-    width: auto !important;
-    height: auto !important;
-    object-fit: contain !important;
-    display: block !important;
-  }
+.pdf-mode .product-media img {
+  max-width: 85% !important;   /* probá 80%–90% */
+  max-height: 85% !important;
+  width: auto !important;
+  height: auto !important;
+}
+.pdf-mode img {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  display: block !important;
+}
 `}</style>
 
         {/* Header Section */}
@@ -293,7 +299,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 data-product-price={String(product.price ?? '')}
               >
                 <div
-                  className={`aspect-[4/3] w-full overflow-hidden shadow-sm relative flex items-center justify-center ${isModern
+                  className={`product-media aspect-[4/3] w-full overflow-hidden shadow-sm relative flex items-center justify-center ${isModern
                     ? 'rounded-[2rem]'
                     : isMinimalist
                       ? 'rounded-none border border-slate-100'
@@ -338,7 +344,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   {/* Price Tag (solo desktop) */}
                   <div
                     data-price-tag="true"
-                    className={`hidden sm:flex absolute bottom-4 px-4 py-2 font-bold shadow-lg ${isModern
+                    className={`hidden sm:flex absolute bottom-3 px-4 py-2 font-bold shadow-lg ${isModern
                       ? 'bg-white rounded-2xl text-slate-900'
                       : isMinimalist
                         ? 'bg-slate-900 text-white rounded-none'

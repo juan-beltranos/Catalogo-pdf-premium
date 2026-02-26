@@ -26,7 +26,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
   ): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
-    const EXPORT_WIDTH_PX = 794;
+    const EXPORT_WIDTH_PX = 800;
 
     const cleanPhoneForWa = (v: string) => (v || "").replace(/[^\d]/g, "");
     const encodeWaText = (t: string) => encodeURIComponent(t);
@@ -77,7 +77,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         e.style.display = "flex";
         e.style.position = "absolute";
         e.style.right = "16px";
-        e.style.bottom = "16px";
+        e.style.bottom = "-10px"; 
         e.style.zIndex = "999";
       });
 
@@ -115,7 +115,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         e.style.display = "flex";
         e.style.position = "absolute";
         e.style.right = "16px";
-        e.style.bottom = "16px";
+        e.style.bottom = "-10px"; 
         e.style.zIndex = "5";
         e.style.alignItems = "center";
         e.style.justifyContent = "center";
