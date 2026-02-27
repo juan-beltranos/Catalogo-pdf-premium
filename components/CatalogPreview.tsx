@@ -158,8 +158,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   }
 
 .pdf-mode .product-media img {
-  max-width: 100% !important;  
-  max-height: 100% !important;
+  max-width: 80% !important;  
+  max-height: 80% !important;
   width: auto !important;
   height: auto !important;
 }
