@@ -77,7 +77,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         e.style.display = "flex";
         e.style.position = "absolute";
         e.style.right = "16px";
-        e.style.bottom = "-10px"; 
+        e.style.bottom = "-10px";
         e.style.zIndex = "999";
       });
 
@@ -99,7 +99,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       }
 
       // =========================
-      // 1) FORZAR LAYOUT + NO CORTES
+      // 1) FORZAR LAYOUT + NO CORTES (para el layout, igual lo respetamos)
       // =========================
       const cards = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
       cards.forEach((card) => {
@@ -115,7 +115,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         e.style.display = "flex";
         e.style.position = "absolute";
         e.style.right = "16px";
-        e.style.bottom = "-10px"; 
+        e.style.bottom = "-10px";
         e.style.zIndex = "5";
         e.style.alignItems = "center";
         e.style.justifyContent = "center";
@@ -242,7 +242,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
           if (rect.width <= 0 || rect.height <= 0) continue;
 
-          // Si quieres un poquito más grande el área clicable:
           const pad = 2;
           linkAreasCss.push({
             url,
@@ -268,7 +267,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         backgroundColor: "#ffffff",
         logging: false,
         windowWidth: EXPORT_WIDTH_PX,
-        windowHeight: clone.scrollHeight,
+        // Edge: mejor usar height real del rect
+        windowHeight: Math.ceil(clone.getBoundingClientRect().height),
         scrollX: 0,
         scrollY: 0,
         onclone: (doc) => {
@@ -278,7 +278,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       });
 
       // =========================
-      // 5) PDF PAGINADO (SMART: NO CORTAR TARJETAS)
+      // 5) PDF PAGINADO (NO PARTIR TARJETAS: usar TOP de cada card)
       // =========================
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
 
@@ -292,32 +292,28 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const pxPerMm = canvas.width / usableWmm;
       const pageHeightPx = Math.floor(usableHmm * pxPerMm);
 
-      const domHeight = clone.scrollHeight || clone.getBoundingClientRect().height || 1;
+      // Escala DOM -> Canvas consistente
+      const rootRect = clone.getBoundingClientRect();
+      const domHeight = rootRect.height || 1;
       const scaleY = canvas.height / domHeight;
 
-      const getMarginBottom = (el: HTMLElement) => {
-        const mb = window.getComputedStyle(el).marginBottom;
-        const n = parseFloat(mb || "0");
-        return Number.isFinite(n) ? n : 0;
-      };
-
+      // Breakpoints = TOP de cada tarjeta (esto evita que imagen/título se separen)
       const bpSet = new Set<number>();
       bpSet.add(0);
       bpSet.add(canvas.height);
 
-      const rootRect = clone.getBoundingClientRect();
       const cardsAfterLayout = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
 
       for (const card of cardsAfterLayout) {
         const r = card.getBoundingClientRect();
-        const bottomCss = (r.bottom - rootRect.top) + getMarginBottom(card);
-        const bottomCanvas = Math.floor(bottomCss * scaleY);
-        bpSet.add(Math.max(0, Math.min(canvas.height, bottomCanvas - 4)));
+        const topCss = r.top - rootRect.top;
+        const topCanvas = Math.round(topCss * scaleY);
+        bpSet.add(Math.max(0, Math.min(canvas.height, topCanvas)));
       }
 
       const breakpoints = Array.from(bpSet)
         .filter((v) => Number.isFinite(v))
-        .map((v) => Math.max(0, Math.min(canvas.height, Math.floor(v))))
+        .map((v) => Math.max(0, Math.min(canvas.height, Math.round(v))))
         .sort((a, b) => a - b);
 
       const pickBreak = (offsetY: number, limit: number) => {
@@ -332,10 +328,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       let offsetY = 0;
       let pageIndex = 0;
+      const OVERLAP_PX = 2; // solo para evitar “costura” por redondeos
 
       while (offsetY < canvas.height) {
         const idealEnd = offsetY + pageHeightPx;
+
+        // Cortar en el TOP del siguiente card que entre en la página
         let endY = pickBreak(offsetY, idealEnd);
+
+        // Si no hay breakpoint útil, corta al límite
         if (endY === -1) endY = Math.min(idealEnd, canvas.height);
 
         const sliceHeight = endY - offsetY;
@@ -360,8 +361,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         // =========================
         // 6) LINKS CLICABLES SOBRE LA IMAGEN (REDES + PRODUCTOS)
         // =========================
-        const domWidth = clone.getBoundingClientRect().width || 1;
-        const domHeight2 = clone.scrollHeight || clone.getBoundingClientRect().height || 1;
+        // Importante: usar el mismo sistema (getBoundingClientRect) para evitar drift en Edge
+        const rootRect2 = clone.getBoundingClientRect();
+        const domWidth = rootRect2.width || 1;
+        const domHeight2 = rootRect2.height || 1;
 
         const scaleX = canvas.width / domWidth;
         const scaleY2 = canvas.height / domHeight2;
@@ -386,15 +389,18 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           const visibleH = visibleBottom - visibleTop;
           if (visibleH <= 0) continue;
 
-          const xMm = margin + (xCanvas / pxPerMm);
-          const yMm = margin + ((visibleTop - sliceTop) / pxPerMm);
+          const xMm = margin + xCanvas / pxPerMm;
+          const yMm = margin + (visibleTop - sliceTop) / pxPerMm;
           const wMm = wCanvas / pxPerMm;
           const hMm = visibleH / pxPerMm;
 
           pdf.link(xMm, yMm, wMm, hMm, { url: la.url });
         }
 
-        offsetY = endY;
+        let nextOffset = endY - OVERLAP_PX;
+        if (nextOffset <= offsetY) nextOffset = endY;
+
+        offsetY = nextOffset;
         pageIndex++;
       }
 
