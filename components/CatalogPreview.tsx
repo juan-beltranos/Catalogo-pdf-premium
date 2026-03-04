@@ -3,13 +3,13 @@ import { Product, StoreInfo } from '../types';
 import { formatCurrency } from '../constants';
 import { Phone, Facebook, Instagram, MessageCircle } from 'lucide-react';
 import { ProductThumb } from './ProductThumb';
-import { facebookUrl, instagramUrl, facebookLabel, instagramLabel } from '@/helper/social';
+import { facebookUrl, instagramUrl, facebookLabel, instagramLabel, normalizeWaNumber } from '@/helper/social';
 
 
 interface CatalogPreviewProps {
   storeInfo: StoreInfo;
   products: Product[];
-  previewRef: React.RefObject<HTMLDivElement>;
+  previewRef: React.RefObject<HTMLDivElement | null>;
   productsOverride?: Product[];
 }
 
@@ -41,6 +41,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     return arr;
   }, [sourceProducts]);
 
+  const wa = useMemo(() => normalizeWaNumber(storeInfo.whatsapp || "", "57"), [storeInfo.whatsapp]);
 
   return (
     <div className="flex justify-center w-full min-h-screen p-4 md:p-8 bg-slate-200/30">
@@ -157,25 +158,25 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     z-index: 999 !important;
   }
 
-.pdf-mode .product-media img {
-  max-width: 80% !important;  
-  max-height: 80% !important;
-  width: auto !important;
-  height: auto !important;
-}
-.pdf-mode img {
-  max-width: 85% !important;
-  max-height: 85% !important;
-  width: auto !important;
-  height: auto !important;
-  object-fit: contain !important;
-  object-position: center !important;
-  display: block !important;
-}
-  .pdf-mode .product-pdf h3 {
-  font-size: 17px !important; 
-  line-height: 1.15 !important;
-}
+  .pdf-mode .product-media img {
+    max-width: 80% !important;  
+    max-height: 80% !important;
+    width: auto !important;
+    height: auto !important;
+  }
+  .pdf-mode img {
+    max-width: 85% !important;
+    max-height: 85% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    object-position: center !important;
+    display: block !important;
+  }
+    .pdf-mode .product-pdf h3 {
+    font-size: 17px !important; 
+    line-height: 1.15 !important;
+  }
 `}</style>
 
         {/* Header Section */}
@@ -226,7 +227,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   {/* WhatsApp */}
                   {storeInfo.whatsapp && (
                     <a
-                      href={`https://wa.me/${storeInfo.whatsapp}`}
+                      href={`https://wa.me/${wa}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label="WhatsApp"
@@ -281,7 +282,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                     } backdrop-blur-md`}
                 >
                   <Phone className="w-4 h-4" />
-                  <span data-store-whatsapp="true">{storeInfo.whatsapp}</span>
+                  <span data-store-whatsapp="true">{wa}</span>
                 </div>
               )}
             </div>
@@ -423,14 +424,14 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 {/* WhatsApp */}
                 {storeInfo.whatsapp && (
                   <a
-                    href={`https://wa.me/${storeInfo.whatsapp}`}
+                    href={`https://wa.me/${wa}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     data-pdf-link="social"
                     className="flex items-center gap-2 hover:text-green-600 transition-colors"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>{storeInfo.whatsapp}</span>
+                    <span>{wa}</span>
                   </a>
                 )}
 

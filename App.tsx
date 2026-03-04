@@ -135,6 +135,7 @@ export const App: React.FC = () => {
           targetRef={previewRef}
           fileName={storeInfo.name || 'mi-catalogo'}
           products={products}
+          businessWhatsapp={storeInfo.whatsapp || ""}
         />
       )}
     </div>

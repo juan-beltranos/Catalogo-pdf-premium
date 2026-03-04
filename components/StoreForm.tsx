@@ -2,7 +2,7 @@ import React from 'react';
 import { StoreInfo } from '../types';
 import { Store, Image as ImageIcon, Facebook, Instagram, MessageCircle } from 'lucide-react';
 import { compressImage } from '../constants';
-import { cleanHandle } from '@/helper/social';
+import { cleanHandle, normalizeWaNumber } from '@/helper/social';
 
 interface StoreFormProps {
   storeInfo: StoreInfo;
@@ -55,7 +55,7 @@ export const StoreForm: React.FC<StoreFormProps> = ({ storeInfo, onUpdate }) => 
             <input
               type="tel"
               value={storeInfo.whatsapp}
-              onChange={(e) => onUpdate({ whatsapp: e.target.value })}
+              onChange={(e) => onUpdate({ whatsapp: normalizeWaNumber(e.target.value, "57") })}
               placeholder="3001234567"
               className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
             />
@@ -163,7 +163,7 @@ export const StoreForm: React.FC<StoreFormProps> = ({ storeInfo, onUpdate }) => 
             Mostrar cantidad en el PDF
           </label>
         </div>
-        
+
       </div>
     </div>
   );

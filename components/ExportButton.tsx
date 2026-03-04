@@ -4,14 +4,16 @@ import { jsPDF } from 'jspdf';
 import { getImageUrl } from '@/helper/imageDB';
 import { groupByCategory, slug } from "../helper/catalog";
 import { Product } from '@/types';
+import { normalizeWaNumber } from '@/helper/social';
 
 interface ExportButtonProps {
-  targetRef: React.RefObject<HTMLDivElement>;
+  targetRef: React.RefObject<HTMLDivElement | null>;
   fileName: string;
   products: Product[];
+  businessWhatsapp: string;
 }
 
-export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName, products }) => {
+export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName, products, businessWhatsapp }) => {
 
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
@@ -28,7 +30,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
     const EXPORT_WIDTH_PX = 800;
 
-    const cleanPhoneForWa = (v: string) => (v || "").replace(/[^\d]/g, "");
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
     const printRoot = document.createElement("div");
@@ -216,16 +217,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         linkAreasCss.push({ url, left, top, width: rect.width, height: rect.height });
       }
 
-      // B) WhatsApp del negocio (lo lee del DOM clonado)
-      const businessWa = cleanPhoneForWa(
-        (clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "")
-      );
+      // B) WhatsApp del negocio: usa prop; si viene vacío, cae al DOM
+      const waFromDom =
+        (clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "");
+
+      const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
 
       // C) Productos -> WhatsApp con mensaje
       const productTargets = Array.from(
         clone.querySelectorAll('[data-pdf-link="product"]')
       ) as HTMLElement[];
 
+      console.log(businessWa);
+      
       if (businessWa) {
         for (const el of productTargets) {
           const name = (el.dataset.productName || "").trim();
