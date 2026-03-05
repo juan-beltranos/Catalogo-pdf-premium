@@ -5,7 +5,6 @@ import { Phone, Facebook, Instagram, MessageCircle } from 'lucide-react';
 import { ProductThumb } from './ProductThumb';
 import { facebookUrl, instagramUrl, facebookLabel, instagramLabel, normalizeWaNumber } from '@/helper/social';
 
-
 interface CatalogPreviewProps {
   storeInfo: StoreInfo;
   products: Product[];
@@ -29,8 +28,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   const sourceProducts = productsOverride ?? products;
 
   const orderedProducts = useMemo(() => {
-    const arr = [...sourceProducts]
-      .filter((p) => !p.hidden);
+    const arr = [...sourceProducts].filter((p) => !p.hidden);
 
     arr.sort((a, b) => {
       const ao = typeof a.order === 'number' ? a.order : Number(a.id);
@@ -41,7 +39,18 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     return arr;
   }, [sourceProducts]);
 
-  const wa = useMemo(() => normalizeWaNumber(storeInfo.whatsapp || "", "57"), [storeInfo.whatsapp]);
+  const wa = useMemo(() => normalizeWaNumber(storeInfo.whatsapp || '', '57'), [storeInfo.whatsapp]);
+
+  // ✅ Link WhatsApp por producto con mensaje predeterminado
+  const buildWaLink = (product: Product) => {
+    const text =
+      `Hola 👋, quiero hacer un pedido:\n` +
+      `• Producto: ${product.name}\n` +
+      `• Precio: ${formatCurrency(product.price)}\n` +
+      `¿Me confirmas disponibilidad y tiempo de entrega?`;
+
+    return `https://wa.me/${wa}?text=${encodeURIComponent(text)}`;
+  };
 
   return (
     <div className="flex justify-center w-full min-h-screen p-4 md:p-8 bg-slate-200/30">
@@ -127,12 +136,13 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   .catalog-html tr:nth-child(even) td {
     background: #f8fafc;
   }
-         /* ====== SOLO PDF (html2canvas NO respeta @media print) ====== */
+
+  /* ====== SOLO PDF (html2canvas NO respeta @media print) ====== */
   .pdf-mode .products-grid {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    column-gap: 0 !important;         /* si quieres exacto como tailwind gap-x-?? */
-    row-gap: 3rem !important;         /* gap-y-12 = 3rem */
+    column-gap: 0 !important;
+    row-gap: 3rem !important;
   }
 
   /* Evitar cortes */
@@ -164,6 +174,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     width: auto !important;
     height: auto !important;
   }
+
   .pdf-mode img {
     max-width: 85% !important;
     max-height: 85% !important;
@@ -173,9 +184,15 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     object-position: center !important;
     display: block !important;
   }
-    .pdf-mode .product-pdf h3 {
+
+  .pdf-mode .product-pdf h3 {
     font-size: 17px !important; 
     line-height: 1.15 !important;
+  }
+
+  /* ✅ Si el contenedor está en pdf-mode, evita que los productos sean clickeables */
+  .pdf-mode a[data-pdf-link="product"] {
+    pointer-events: none !important;
   }
 `}</style>
 
@@ -197,10 +214,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {storeInfo.logo && (
                 <div
                   className={`${isModern
-                    ? 'w-24 h-24 rounded-3xl rotate-3'
-                    : isMinimalist
-                      ? 'w-16 h-16 rounded-none border border-slate-200'
-                      : 'w-20 h-20 rounded-2xl'
+                      ? 'w-24 h-24 rounded-3xl rotate-3'
+                      : isMinimalist
+                        ? 'w-16 h-16 rounded-none border border-slate-200'
+                        : 'w-20 h-20 rounded-2xl'
                     } bg-white p-2 shadow-lg flex items-center justify-center`}
                 >
                   <img src={storeInfo.logo} alt="Logo" className="max-w-full max-h-full object-contain" />
@@ -218,12 +235,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 </p>
               </div>
             </div>
+
             <div className="flex flex-col items-center md:items-end gap-3">
               {/* ICONOS (solo iconos) */}
               {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
-                <div
-                  className={`flex items-center gap-3 ${isMinimalist ? 'text-slate-600' : 'text-white'}`}
-                >
+                <div className={`flex items-center gap-3 ${isMinimalist ? 'text-slate-600' : 'text-white'}`}>
                   {/* WhatsApp */}
                   {storeInfo.whatsapp && (
                     <a
@@ -248,7 +264,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       rel="noopener noreferrer"
                       aria-label="Facebook"
                       title={facebookLabel(storeInfo.facebook)}
-                      className={`p-2 rounded-full transition-colors ${isMinimalist ? "hover:bg-slate-100" : "hover:bg-white/15"
+                      className={`p-2 rounded-full transition-colors ${isMinimalist ? 'hover:bg-slate-100' : 'hover:bg-white/15'
                         }`}
                     >
                       <Facebook className="w-5 h-5" />
@@ -263,13 +279,12 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       rel="noopener noreferrer"
                       aria-label="Instagram"
                       title={instagramLabel(storeInfo.instagram)}
-                      className={`p-2 rounded-full transition-colors ${isMinimalist ? "hover:bg-slate-100" : "hover:bg-white/15"
+                      className={`p-2 rounded-full transition-colors ${isMinimalist ? 'hover:bg-slate-100' : 'hover:bg-white/15'
                         }`}
                     >
                       <Instagram className="w-5 h-5" />
                     </a>
                   )}
-
                 </div>
               )}
 
@@ -277,8 +292,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {storeInfo.whatsapp && (
                 <div
                   className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold ${isMinimalist
-                    ? 'bg-slate-100 text-slate-900 border border-slate-200'
-                    : 'bg-black/20 text-white border border-white/20'
+                      ? 'bg-slate-100 text-slate-900 border border-slate-200'
+                      : 'bg-black/20 text-white border border-white/20'
                     } backdrop-blur-md`}
                 >
                   <Phone className="w-4 h-4" />
@@ -291,124 +306,150 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
           {!isMinimalist && !isModern && <div className="absolute -bottom-6 left-0 right-0 h-12 bg-white rounded-t-[3rem]" />}
         </div>
 
+        {/* ✅ Barra elegante (debajo del header) */}
+        {storeInfo.whatsapp && (
+          <div
+            className={`px-10 py-3 border-b ${isMinimalist ? 'bg-white border-slate-100 text-slate-500' : 'bg-slate-50 border-slate-100 text-slate-600'
+              }`}
+          >
+            <div className="flex items-center justify-center gap-2 text-xs">
+              <MessageCircle className="w-4 h-4 text-green-600" />
+              <span>Toca cualquier producto para pedirlo por WhatsApp</span>
+            </div>
+          </div>
+        )}
+
         {/* Products Grid Area */}
-        <div className={`p-10 flex-grow ${isMinimalist ? 'pt-8' : isModern ? 'pt-12' : 'pt-6'}`}>
+        <div className={`p-10 flex-grow ${isMinimalist ? 'pt-4' : isModern ? 'pt-4' : 'pt-4'}`}>
           <div className="products-grid grid grid-cols-2 gap-y-12">
-            {orderedProducts.map((product) => (
-              <div
-                key={product.id}
-                className={`flex flex-col gap-4 group product-pdf ${isClassic ? 'items-center text-center' : ''}`}
-                data-category={(product.category || 'Sin categoría').trim()}
-                data-pdf-link="product"
-                data-product-name={product.name}
-                data-product-price={String(product.price ?? '')}
-              >
-                <div
-                  className={`product-media aspect-[4/3] w-full overflow-hidden shadow-sm relative flex items-center justify-center ${isModern
-                    ? 'rounded-[2rem]'
-                    : isMinimalist
-                      ? 'rounded-none border border-slate-100'
-                      : 'rounded-2xl border border-slate-100'
-                    }`}
+            {orderedProducts.map((product) => {
+              const waLink = storeInfo.whatsapp ? buildWaLink(product) : '#';
+
+              return (
+                // ✅ Tarjeta clickeable completa
+                <a
+                  key={product.id}
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex flex-col gap-4 group product-pdf ${isClassic ? 'items-center text-center' : ''
+                    } cursor-pointer transition hover:opacity-95`}
+                  style={{ textDecoration: 'none' }}
+                  data-category={(product.category || 'Sin categoría').trim()}
+                  data-pdf-link="product"
+                  data-product-name={product.name}
+                  data-product-price={String(product.price ?? '')}
+                  title="Haz clic para pedir por WhatsApp"
                 >
-                  {product.featured && (
-                    <div
-                      data-featured-badge="true"
-                      className="absolute top-3 right-3 z-10 flex items-center justify-center
-                      w-8 h-8 rounded-full
-                      bg-yellow-400 shadow-md"
-                      style={{
-                        border: "2px solid #fff",
-                      }}
-                    >
-                      {/* ✅ SVG estrella (no texto) */}
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                        style={{ display: "block" }}
-                      >
-                        <path
-                          d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
-                          fill="#ffffff"
-                        />
-                      </svg>
-                    </div>
-                  )}
-
-
-                  {(product.image || product.imageId) ? (
-                    <ProductThumb product={product} className="max-w-[200px] max-h-full object-contain mx-auto block" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-200">
-                      <span className="text-4xl font-bold">Sin Foto</span>
-                    </div>
-                  )}
-
-                  {/* Price Tag (solo desktop) */}
                   <div
-                    data-price-tag="true"
-                    className={`hidden sm:flex absolute bottom-3 px-4 py-2 font-bold shadow-lg ${isModern
-                      ? 'bg-white rounded-2xl text-slate-900'
-                      : isMinimalist
-                        ? 'bg-slate-900 text-white rounded-none'
-                        : 'bg-white rounded-full text-slate-900'
+                    className={`product-media aspect-[4/3] w-full overflow-hidden shadow-sm relative flex items-center justify-center ${isModern
+                        ? 'rounded-[2rem]'
+                        : isMinimalist
+                          ? 'rounded-none border border-slate-100'
+                          : 'rounded-2xl border border-slate-100'
+                      }`}
+                  >
+                    {product.featured && (
+                      <div
+                        data-featured-badge="true"
+                        className="absolute top-3 right-3 z-10 flex items-center justify-center w-8 h-8 rounded-full bg-yellow-400 shadow-md"
+                        style={{ border: '2px solid #fff' }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+                          <path
+                            d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+                            fill="#ffffff"
+                          />
+                        </svg>
+                      </div>
+                    )}
+
+                    {(product.image || product.imageId) ? (
+                      <ProductThumb product={product} className="max-w-[200px] max-h-full object-contain mx-auto block" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-200">
+                        <span className="text-4xl font-bold">Sin Foto</span>
+                      </div>
+                    )}
+
+                    {/* ✅ Overlay sutil (solo hover) */}
+                    {storeInfo.whatsapp && (
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <div className="px-3 py-1 rounded-full text-xs font-semibold bg-white/80 backdrop-blur text-slate-900 flex items-center gap-2">
+                          <MessageCircle className="w-3 h-3 text-green-600" />
+                          Pedir por WhatsApp
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Price Tag (solo desktop) */}
+                    <div
+                      data-price-tag="true"
+                      className={`hidden sm:flex absolute bottom-3 px-4 py-2 font-bold shadow-lg ${isModern
+                          ? 'bg-white rounded-2xl text-slate-900'
+                          : isMinimalist
+                            ? 'bg-slate-900 text-white rounded-none'
+                            : 'bg-white rounded-full text-slate-900'
+                        }`}
+                    >
+                      {formatCurrency(product.price)}
+                    </div>
+                  </div>
+
+                  {/* PRICE (solo móvil) */}
+                  <div
+                    data-price-mobile="true"
+                    className={`sm:hidden -mt-1 font-bold ${isClassic ? 'text-center' : 'text-left'} ${isMinimalist
+                        ? 'text-sm uppercase tracking-wide text-slate-900'
+                        : isModern
+                          ? 'text-lg text-slate-900'
+                          : 'text-base text-slate-800'
                       }`}
                   >
                     {formatCurrency(product.price)}
                   </div>
-                </div>
 
-                {/* PRICE (solo móvil) */}
-                <div
-                  data-price-mobile="true"
-                  className={`sm:hidden -mt-1 font-bold ${isClassic ? 'text-center' : 'text-left'} ${isMinimalist
-                    ? 'text-sm uppercase tracking-wide text-slate-900'
-                    : isModern
-                      ? 'text-lg text-slate-900'
-                      : 'text-base text-slate-800'
-                    }`}
-                >
-                  {formatCurrency(product.price)}
-                </div>
+                  <div className={isClassic ? 'px-2' : ''}>
+                    <h3
+                      className={`font-bold text-slate-900 leading-tight ${isMinimalist ? 'text-base uppercase tracking-wider' : 'text-xl'
+                        } ${isClassic ? 'font-serif' : ''}`}
+                    >
+                      {product.name}
+                    </h3>
 
-                <div className={isClassic ? 'px-2' : ''}>
-                  <h3
-                    className={`font-bold text-slate-900 leading-tight ${isMinimalist ? 'text-base uppercase tracking-wider' : 'text-xl'
-                      } ${isClassic ? 'font-serif' : ''}`}
-                  >
-                    {product.name}
-                  </h3>
-                  {showQuantityInPdf && (product.quantity ?? 0) > 0 && (
-                    <div className={`mt-1 text-slate-600 ${isMinimalist ? 'text-[10px]' : 'text-xs'}`}>
-                      Stock : <span className="font-semibold">{product.quantity}</span>
-                    </div>
-                  )}
+                    {/* ✅ Mini-indicador (discreto) */}
+                    {/* {storeInfo.whatsapp && (
+                      <div className="mt-1 text-[10px] text-slate-400 flex items-center gap-1">
+                        <MessageCircle className="w-3 h-3 text-green-600" />
+                        <span>Presiona para pedir</span>
+                      </div>
+                    )} */}
 
-                  {product.description && (
-                    <div
-                      className={`mt-2 text-slate-500 leading-relaxed ${isMinimalist ? 'text-[10px]' : 'text-xs'
-                        } catalog-html break-words whitespace-normal overflow-x-auto`}
-                      style={{
-                        overflowWrap: 'anywhere',
-                        wordBreak: 'break-word',
-                      }}
-                      dangerouslySetInnerHTML={{ __html: product.description }}
-                    />
-                  )}
+                    {showQuantityInPdf && (product.quantity ?? 0) > 0 && (
+                      <div className={`mt-1 text-slate-600 ${isMinimalist ? 'text-[10px]' : 'text-xs'}`}>
+                        Stock : <span className="font-semibold">{product.quantity}</span>
+                      </div>
+                    )}
 
-                  {isClassic && <div className="w-10 h-[1px] bg-slate-200 mx-auto mt-4" />}
-                </div>
-              </div>
-            ))}
+                    {product.description && (
+                      <div
+                        className={`mt-2 text-slate-500 leading-relaxed ${isMinimalist ? 'text-[10px]' : 'text-xs'
+                          } catalog-html break-words whitespace-normal overflow-x-auto`}
+                        style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                        dangerouslySetInnerHTML={{ __html: product.description }}
+                      />
+                    )}
+
+                    {isClassic && <div className="w-10 h-[1px] bg-slate-200 mx-auto mt-4" />}
+                  </div>
+                </a>
+              );
+            })}
           </div>
 
           {orderedProducts.length === 0 && (
             <div className="py-32 text-center text-slate-300">
-              <p className="text-xl font-light italic">
-                Tu catálogo cobra vida aquí. Agrega productos para comenzar.
-              </p>
+              <p className="text-xl font-light italic">Tu catálogo cobra vida aquí. Agrega productos para comenzar.</p>
             </div>
           )}
         </div>
@@ -416,11 +457,9 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
         {/* Footer info */}
         <div className={`mt-auto p-10 border-t border-slate-50 ${isClassic ? 'bg-slate-50/50' : ''}`}>
           <div className="flex flex-col gap-4">
-
             {/* Redes Sociales */}
             {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
               <div className="flex flex-wrap justify-center items-center gap-6 text-slate-600 text-xs font-medium">
-
                 {/* WhatsApp */}
                 {storeInfo.whatsapp && (
                   <a
@@ -462,12 +501,14 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                     <span className="break-all">{instagramLabel(storeInfo.instagram)}</span>
                   </a>
                 )}
-
               </div>
             )}
+
             {/* Línea inferior */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-slate-400 text-[10px] uppercase tracking-widest font-medium">
-              <p>© {new Date().getFullYear()} {storeInfo.name || 'Empresa'}</p>
+              <p>
+                © {new Date().getFullYear()} {storeInfo.name || 'Empresa'}
+              </p>
               <div className="flex items-center gap-2">
                 <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                 <p>Diseño: {templateId}</p>
@@ -475,10 +516,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 <p>Catálogo - Intelia SB</p>
               </div>
             </div>
-
           </div>
         </div>
-
       </div>
     </div>
   );
