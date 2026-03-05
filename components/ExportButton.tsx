@@ -238,7 +238,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           if (!name) continue;
 
           const msg = `Hola, quiero el producto: ${name}${price ? ` (Precio: ${price})` : ""}`;
-          const url = `https://wa.me/${businessWa}?text=${encodeWaText(msg)}`;
+          const url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
 
           const rect = el.getBoundingClientRect();
           const left = rect.left - rootRectForLinks.left;
