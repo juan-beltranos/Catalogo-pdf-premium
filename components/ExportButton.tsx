@@ -5,6 +5,7 @@ import { getImageUrl } from '@/helper/imageDB';
 import { groupByCategory, slug } from "../helper/catalog";
 import { Product } from '@/types';
 import { normalizeWaNumber } from '@/helper/social';
+import { formatCurrency } from '@/constants';
 
 interface ExportButtonProps {
   targetRef: React.RefObject<HTMLDivElement | null>;
@@ -29,17 +30,37 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     if (!targetRef.current) throw new Error("targetRef is null");
 
     const EXPORT_WIDTH_PX = 800;
+    const PDF_MARGIN_MM = 10;
+    const OVERLAP_CSS_PX = 2;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
+    const waitTwoFrames = () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => resolve())
+        )
+      );
+
+    const waitLoad = (img: HTMLImageElement) =>
+      img.complete && img.naturalWidth > 0
+        ? Promise.resolve()
+        : new Promise<void>((res) => {
+          img.onload = () => res();
+          img.onerror = () => res();
+        });
+
     const printRoot = document.createElement("div");
     printRoot.style.position = "fixed";
-    printRoot.style.left = "-10000px";
+    printRoot.style.left = "0";
     printRoot.style.top = "0";
     printRoot.style.width = `${EXPORT_WIDTH_PX}px`;
     printRoot.style.background = "#ffffff";
-    printRoot.style.zIndex = "-1";
-    printRoot.style.contain = "layout style paint";
+    printRoot.style.opacity = "0";
+    printRoot.style.pointerEvents = "none";
+    printRoot.style.zIndex = "2147483647";
+    printRoot.style.visibility = "visible";
+    printRoot.style.contain = "none";
     document.body.appendChild(printRoot);
 
     const objectUrlsToRevoke: string[] = [];
@@ -52,38 +73,69 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       clone.style.width = `${EXPORT_WIDTH_PX}px`;
       clone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
       clone.style.margin = "0";
-      clone.style.transform = "none";
       clone.style.minHeight = "auto";
       clone.style.height = "auto";
+      clone.style.transform = "none";
+      clone.style.transformOrigin = "top left";
+      clone.style.willChange = "auto";
+      clone.style.background = "#ffffff";
+      clone.style.backgroundColor = "#ffffff";
+      clone.style.opacity = "1";
+      clone.style.filter = "none";
+      (clone.style as any).backdropFilter = "none";
+      (clone.style as any).webkitBackdropFilter = "none";
+      clone.style.boxShadow = "none";
 
-      // Ocultar UI que no quieres en PDF
       clone.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
         (el as HTMLElement).style.display = "none";
       });
 
-      printRoot.appendChild(clone);
+      // Normalización general
+      const allNodes = Array.from(clone.querySelectorAll("*")) as HTMLElement[];
+      allNodes.forEach((el) => {
+        const cs = window.getComputedStyle(el);
 
-      // ✅ En export: siempre mostrar tag absoluto y ocultar precio móvil
-      clone.querySelectorAll('[data-price-mobile="true"]').forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.display = "none";
-        e.style.visibility = "hidden";
-        e.style.height = "0";
-        e.style.margin = "0";
-        e.style.padding = "0";
+        if (cs.filter && cs.filter !== "none") el.style.filter = "none";
+        if ((cs as any).backdropFilter && (cs as any).backdropFilter !== "none") {
+          (el.style as any).backdropFilter = "none";
+          (el.style as any).webkitBackdropFilter = "none";
+        }
+        if (cs.boxShadow && cs.boxShadow !== "none") el.style.boxShadow = "none";
+        if ((cs as any).mixBlendMode && (cs as any).mixBlendMode !== "normal") {
+          (el.style as any).mixBlendMode = "normal";
+        }
       });
 
-      clone.querySelectorAll('[data-price-tag="true"]').forEach((el) => {
+      clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
         const e = el as HTMLElement;
-        e.style.display = "flex";
-        e.style.position = "absolute";
-        e.style.right = "16px";
-        e.style.bottom = "-10px";
-        e.style.zIndex = "999";
+        e.style.display = 'inline-flex';
+        e.style.alignItems = 'center';
+        e.style.justifyContent = 'center';
+        e.style.lineHeight = '1';
+        e.style.verticalAlign = 'top';
+        e.style.paddingTop = '0';
+        e.style.paddingBottom = '0';
+        e.style.boxSizing = 'border-box';
+        e.style.whiteSpace = 'nowrap';
+        e.style.minHeight = '36px';
+      });
+
+      clone.querySelectorAll('[data-category-badge="true"]').forEach((el) => {
+        const e = el as HTMLElement;
+        e.style.display = 'inline-flex';
+        e.style.alignItems = 'center';
+        e.style.justifyContent = 'center';
+        e.style.lineHeight = '1';
+        e.style.verticalAlign = 'top';
+        e.style.paddingTop = '0';
+        e.style.paddingBottom = '0';
+        e.style.boxSizing = 'border-box';
+        e.style.whiteSpace = 'nowrap';
+        e.style.minHeight = '24px';
       });
 
       // =========================
-      // 0) FILTRO POR CATEGORÍA (si aplica)
+      // 0) FILTRO POR CATEGORÍA
       // =========================
       if (opts?.category) {
         const wanted = opts.category;
@@ -100,34 +152,71 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       }
 
       // =========================
-      // 1) FORZAR LAYOUT + NO CORTES (para el layout, igual lo respetamos)
+      // 1) LIMPIEZA VISUAL EXACTA DEL CARD
       // =========================
       const cards = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
       cards.forEach((card) => {
         card.style.breakInside = "avoid";
         (card.style as any).pageBreakInside = "avoid";
+        card.style.background = "#ffffff";
+        card.style.backgroundColor = "#ffffff";
+        card.style.boxShadow = "none";
+        card.style.filter = "none";
+        card.style.opacity = "1";
       });
 
-      // =========================
-      // 2) PRECIO SIEMPRE ENCIMA + ocultar precio móvil (si existiera)
-      // =========================
-      clone.querySelectorAll(".price-tag").forEach((el) => {
+      // Contenedor visual del producto: blanco real, sin sombras raras
+      clone.querySelectorAll(".product-media").forEach((el) => {
         const e = el as HTMLElement;
-        e.style.display = "flex";
-        e.style.position = "absolute";
-        e.style.right = "16px";
-        e.style.bottom = "-10px";
-        e.style.zIndex = "5";
-        e.style.alignItems = "center";
-        e.style.justifyContent = "center";
+        e.style.background = "#ffffff";
+        e.style.backgroundColor = "#ffffff";
+        e.style.boxShadow = "none";
+        e.style.filter = "none";
+        e.style.opacity = "1";
+        e.style.borderColor = "#e5e7eb";
       });
 
-      clone.querySelectorAll(".price-mobile").forEach((el) => {
-        (el as HTMLElement).style.display = "none";
+      // Cualquier wrapper interno del media también blanco
+      clone.querySelectorAll(".product-media *").forEach((el) => {
+        const e = el as HTMLElement;
+        e.style.boxShadow = "none";
+        e.style.filter = "none";
+        (e.style as any).backdropFilter = "none";
+        (e.style as any).webkitBackdropFilter = "none";
       });
+
+      // Placeholder "Sin Foto"
+      clone.querySelectorAll(".product-media .bg-slate-50").forEach((el) => {
+        const e = el as HTMLElement;
+        e.style.background = "#ffffff";
+        e.style.backgroundColor = "#ffffff";
+        e.style.color = "#cbd5e1";
+      });
+
+      // Ocultar overlay hover dentro del producto
+      clone.querySelectorAll(".product-media .absolute.inset-0").forEach((el) => {
+        const e = el as HTMLElement;
+        e.style.display = "none";
+      });
+
+      // Badge destacado sin sombra
+      clone.querySelectorAll('[data-featured-badge="true"]').forEach((el) => {
+        const e = el as HTMLElement;
+        e.style.boxShadow = "none";
+        e.style.filter = "none";
+      });
+
+      // Skeletons / shimmer si existen
+      clone
+        .querySelectorAll(
+          '[data-skeleton="true"], .skeleton, .animate-pulse, .shimmer, [aria-busy="true"]'
+        )
+        .forEach((el) => {
+          (el as HTMLElement).style.display = "none";
+        });
 
       // =========================
-      // 3) ASEGURAR IMÁGENES (URL + IndexedDB)
+      // 2) ASEGURAR IMÁGENES
       // =========================
       const imgsAll = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
 
@@ -135,11 +224,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         imgsAll.map(async (img) => {
           const hasSrc = !!img.getAttribute("src")?.trim();
           const id = img.dataset.imgid;
+          const currentSrc = img.getAttribute("src") || "";
 
           img.setAttribute("loading", "eager");
           img.setAttribute("decoding", "sync");
-          img.crossOrigin = "anonymous";
-          img.referrerPolicy = "no-referrer";
+
+          if (currentSrc.startsWith("http")) {
+            img.crossOrigin = "anonymous";
+            img.referrerPolicy = "no-referrer";
+          }
 
           if (!hasSrc && id) {
             const url = await getImageUrl(id);
@@ -151,19 +244,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         })
       );
 
-      const waitLoad = (img: HTMLImageElement) =>
-        img.complete && img.naturalWidth > 0
-          ? Promise.resolve()
-          : new Promise<void>((res) => {
-            img.onload = () => res();
-            img.onerror = () => res();
-          });
-
       await Promise.all(imgsAll.map(waitLoad));
 
       await Promise.all(
         imgsAll.map(async (img) => {
           if (img.naturalWidth > 0) return;
+
           const src = img.getAttribute("src") || "";
           if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
 
@@ -188,17 +274,54 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         img.style.objectFit = "contain";
         img.style.objectPosition = "center";
         img.style.display = "block";
+        img.style.background = "#ffffff";
+        img.style.backgroundColor = "#ffffff";
+        img.style.boxShadow = "none";
+        img.style.filter = "none";
+        img.style.opacity = "1";
       });
 
       // =========================
-      // 3.5) CAPTURAR LINKS ANTES DEL CANVAS (REDES + PRODUCTOS)
+      // 3) HOST DE CAPTURA
       // =========================
-      type LinkArea = { url: string; left: number; top: number; width: number; height: number };
-      const linkAreasCss: LinkArea[] = [];
+      const viewport = document.createElement("div");
+      viewport.style.position = "relative";
+      viewport.style.width = `${EXPORT_WIDTH_PX}px`;
+      viewport.style.overflow = "hidden";
+      viewport.style.background = "#ffffff";
+      viewport.style.backgroundColor = "#ffffff";
+      viewport.style.margin = "0";
+      viewport.style.padding = "0";
+      viewport.style.boxShadow = "none";
+      viewport.style.filter = "none";
+      (viewport.style as any).backdropFilter = "none";
+      (viewport.style as any).webkitBackdropFilter = "none";
 
+      viewport.appendChild(clone);
+      printRoot.appendChild(viewport);
+
+      await waitTwoFrames();
+
+      if ((document as any).fonts?.ready) {
+        await (document as any).fonts.ready;
+      }
+
+      await waitTwoFrames();
+
+      // =========================
+      // 4) CAPTURAR LINKS
+      // =========================
+      type LinkArea = {
+        url: string;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      };
+
+      const linkAreasCss: LinkArea[] = [];
       const rootRectForLinks = clone.getBoundingClientRect();
 
-      // A) Redes
       const socialLinks = Array.from(
         clone.querySelectorAll('a[data-pdf-link="social"]')
       ) as HTMLAnchorElement[];
@@ -208,45 +331,51 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         if (!href) continue;
 
         const rect = a.getBoundingClientRect();
-        const left = rect.left - rootRectForLinks.left;
-        const top = rect.top - rootRectForLinks.top;
-
         if (rect.width <= 0 || rect.height <= 0) continue;
 
+        const left = rect.left - rootRectForLinks.left;
+        const top = rect.top - rootRectForLinks.top;
         const url = href.startsWith("http") ? href : `https://${href}`;
-        linkAreasCss.push({ url, left, top, width: rect.width, height: rect.height });
+
+        linkAreasCss.push({
+          url,
+          left,
+          top,
+          width: rect.width,
+          height: rect.height,
+        });
       }
 
-      // B) WhatsApp del negocio: usa prop; si viene vacío, cae al DOM
       const waFromDom =
-        (clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "");
+        clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
 
       const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
 
-      // C) Productos -> WhatsApp con mensaje
       const productTargets = Array.from(
         clone.querySelectorAll('[data-pdf-link="product"]')
       ) as HTMLElement[];
 
-      console.log(businessWa);
-      
       if (businessWa) {
         for (const el of productTargets) {
           const name = (el.dataset.productName || "").trim();
           const price = (el.dataset.productPrice || "").trim();
-
           if (!name) continue;
 
-          const msg = `Hola, quiero el producto: ${name}${price ? ` (Precio: ${price})` : ""}`;
+          const msg =
+                `Hola 👋, quiero hacer un pedido:\n` +
+            `• Producto: ${name}\n` +
+            `• Precio: ${price}\n` +
+            `¿Me confirmas disponibilidad?`;
+          
           const url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
 
           const rect = el.getBoundingClientRect();
-          const left = rect.left - rootRectForLinks.left;
-          const top = rect.top - rootRectForLinks.top;
-
           if (rect.width <= 0 || rect.height <= 0) continue;
 
+          const left = rect.left - rootRectForLinks.left;
+          const top = rect.top - rootRectForLinks.top;
           const pad = 2;
+
           linkAreasCss.push({
             url,
             left: left - pad,
@@ -258,66 +387,40 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       }
 
       // =========================
-      // 4) CAPTURA
-      // =========================
-      if ((document as any).fonts?.ready) {
-        await (document as any).fonts.ready;
-      }
-
-      const canvas = await html2canvas(clone, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: "#ffffff",
-        logging: false,
-        windowWidth: EXPORT_WIDTH_PX,
-        // Edge: mejor usar height real del rect
-        windowHeight: Math.ceil(clone.getBoundingClientRect().height),
-        scrollX: 0,
-        scrollY: 0,
-        onclone: (doc) => {
-          const el = doc.getElementById("catalog-capture-area");
-          el?.classList.add("pdf-mode");
-        },
-      });
-
-      // =========================
-      // 5) PDF PAGINADO (NO PARTIR TARJETAS: usar TOP de cada card)
+      // 5) MEDIDAS PDF / DOM
       // =========================
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
 
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 10;
 
-      const usableWmm = pageW - margin * 2;
-      const usableHmm = pageH - margin * 2;
+      const usableWmm = pageW - PDF_MARGIN_MM * 2;
+      const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
-      const pxPerMm = canvas.width / usableWmm;
-      const pageHeightPx = Math.floor(usableHmm * pxPerMm);
-
-      // Escala DOM -> Canvas consistente
       const rootRect = clone.getBoundingClientRect();
-      const domHeight = rootRect.height || 1;
-      const scaleY = canvas.height / domHeight;
+      const domWidthCss = Math.ceil(rootRect.width || EXPORT_WIDTH_PX);
+      const totalHeightCss = Math.ceil(rootRect.height || clone.scrollHeight || 1);
 
-      // Breakpoints = TOP de cada tarjeta (esto evita que imagen/título se separen)
+      const pxPerMmCss = domWidthCss / usableWmm;
+      const pageHeightCss = Math.floor(usableHmm * pxPerMmCss);
+
+      // =========================
+      // 6) BREAKPOINTS
+      // =========================
       const bpSet = new Set<number>();
       bpSet.add(0);
-      bpSet.add(canvas.height);
+      bpSet.add(totalHeightCss);
 
       const cardsAfterLayout = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
-
       for (const card of cardsAfterLayout) {
         const r = card.getBoundingClientRect();
-        const topCss = r.top - rootRect.top;
-        const topCanvas = Math.round(topCss * scaleY);
-        bpSet.add(Math.max(0, Math.min(canvas.height, topCanvas)));
+        const topCss = Math.round(r.top - rootRect.top);
+        bpSet.add(Math.max(0, Math.min(totalHeightCss, topCss)));
       }
 
       const breakpoints = Array.from(bpSet)
         .filter((v) => Number.isFinite(v))
-        .map((v) => Math.max(0, Math.min(canvas.height, Math.round(v))))
+        .map((v) => Math.max(0, Math.min(totalHeightCss, Math.round(v))))
         .sort((a, b) => a - b);
 
       const pickBreak = (offsetY: number, limit: number) => {
@@ -330,83 +433,115 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         return chosen;
       };
 
+      const pageRanges: Array<{ startY: number; endY: number }> = [];
       let offsetY = 0;
-      let pageIndex = 0;
-      const OVERLAP_PX = 2; // solo para evitar “costura” por redondeos
 
-      while (offsetY < canvas.height) {
-        const idealEnd = offsetY + pageHeightPx;
+      while (offsetY < totalHeightCss) {
+        const idealEnd = offsetY + pageHeightCss;
 
-        // Cortar en el TOP del siguiente card que entre en la página
         let endY = pickBreak(offsetY, idealEnd);
+        if (endY === -1) endY = Math.min(idealEnd, totalHeightCss);
 
-        // Si no hay breakpoint útil, corta al límite
-        if (endY === -1) endY = Math.min(idealEnd, canvas.height);
+        if (endY <= offsetY) {
+          endY = Math.min(offsetY + pageHeightCss, totalHeightCss);
+        }
 
-        const sliceHeight = endY - offsetY;
-        if (sliceHeight <= 0) break;
+        pageRanges.push({ startY: offsetY, endY });
 
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeight;
+        let nextOffset = endY - OVERLAP_CSS_PX;
+        if (nextOffset <= offsetY) nextOffset = endY;
+        offsetY = nextOffset;
+      }
 
-        const ctx = pageCanvas.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      // =========================
+      // 7) RENDERIZAR CADA PÁGINA
+      // =========================
+      const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
 
-        ctx.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+      for (let pageIndex = 0; pageIndex < pageRanges.length; pageIndex++) {
+        const { startY, endY } = pageRanges[pageIndex];
+        const sliceHeightCss = endY - startY;
 
-        const pageImg = pageCanvas.toDataURL("image/jpeg", 0.95);
-        const sliceHmm = sliceHeight / pxPerMm;
+        viewport.style.height = `${sliceHeightCss}px`;
+        clone.style.transform = `translateY(-${startY}px)`;
+
+        await waitTwoFrames();
+
+        const pageCanvas = await html2canvas(viewport, {
+          scale,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: "#ffffff",
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: domWidthCss,
+          windowHeight: sliceHeightCss,
+          width: domWidthCss,
+          height: sliceHeightCss,
+          imageTimeout: 15000,
+          removeContainer: true,
+          onclone: (doc) => {
+            const el = doc.getElementById("catalog-capture-area");
+            el?.classList.add("pdf-mode");
+          },
+        });
+
+        if (!pageCanvas.width || !pageCanvas.height) {
+          throw new Error("No se pudo capturar una página del catálogo.");
+        }
+
+        const whiteCanvas = document.createElement("canvas");
+        whiteCanvas.width = pageCanvas.width;
+        whiteCanvas.height = pageCanvas.height;
+
+        const whiteCtx = whiteCanvas.getContext("2d");
+        if (!whiteCtx) throw new Error("No se pudo crear el canvas final.");
+
+        whiteCtx.fillStyle = "#ffffff";
+        whiteCtx.fillRect(0, 0, whiteCanvas.width, whiteCanvas.height);
+        whiteCtx.drawImage(pageCanvas, 0, 0);
+
+        const pageImg = whiteCanvas.toDataURL("image/jpeg", 0.95);
+        const sliceHmm = sliceHeightCss / pxPerMmCss;
 
         if (pageIndex > 0) pdf.addPage();
-        pdf.addImage(pageImg, "JPEG", margin, margin, usableWmm, sliceHmm, undefined, "FAST");
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(0, 0, pageW, pageH, "F");
 
-        // =========================
-        // 6) LINKS CLICABLES SOBRE LA IMAGEN (REDES + PRODUCTOS)
-        // =========================
-        // Importante: usar el mismo sistema (getBoundingClientRect) para evitar drift en Edge
-        const rootRect2 = clone.getBoundingClientRect();
-        const domWidth = rootRect2.width || 1;
-        const domHeight2 = rootRect2.height || 1;
-
-        const scaleX = canvas.width / domWidth;
-        const scaleY2 = canvas.height / domHeight2;
+        pdf.addImage(
+          pageImg,
+          "JPEG",
+          PDF_MARGIN_MM,
+          PDF_MARGIN_MM,
+          usableWmm,
+          sliceHmm,
+          undefined,
+          "FAST"
+        );
 
         for (const la of linkAreasCss) {
-          const xCanvas = la.left * scaleX;
-          const yCanvas = la.top * scaleY2;
-          const wCanvas = la.width * scaleX;
-          const hCanvas = la.height * scaleY2;
+          const linkTop = la.top;
+          const linkBottom = la.top + la.height;
 
-          const sliceTop = offsetY;
-          const sliceBottom = endY;
-
-          const linkTop = yCanvas;
-          const linkBottom = yCanvas + hCanvas;
-
-          const intersects = linkBottom > sliceTop && linkTop < sliceBottom;
+          const intersects = linkBottom > startY && linkTop < endY;
           if (!intersects) continue;
 
-          const visibleTop = Math.max(linkTop, sliceTop);
-          const visibleBottom = Math.min(linkBottom, sliceBottom);
+          const visibleTop = Math.max(linkTop, startY);
+          const visibleBottom = Math.min(linkBottom, endY);
           const visibleH = visibleBottom - visibleTop;
           if (visibleH <= 0) continue;
 
-          const xMm = margin + xCanvas / pxPerMm;
-          const yMm = margin + (visibleTop - sliceTop) / pxPerMm;
-          const wMm = wCanvas / pxPerMm;
-          const hMm = visibleH / pxPerMm;
+          const xMm = PDF_MARGIN_MM + la.left / pxPerMmCss;
+          const yMm = PDF_MARGIN_MM + (visibleTop - startY) / pxPerMmCss;
+          const wMm = la.width / pxPerMmCss;
+          const hMm = visibleH / pxPerMmCss;
 
           pdf.link(xMm, yMm, wMm, hMm, { url: la.url });
         }
-
-        let nextOffset = endY - OVERLAP_PX;
-        if (nextOffset <= offsetY) nextOffset = endY;
-
-        offsetY = nextOffset;
-        pageIndex++;
       }
+
+      clone.style.transform = "none";
 
       const baseName = opts?.overrideFileName || fileName;
       const safeFileName =
