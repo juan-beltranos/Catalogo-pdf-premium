@@ -30,7 +30,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
   ): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
-    const EXPORT_WIDTH_PX = 800;
+    const EXPORT_WIDTH_PX = 794;
     const PDF_MARGIN_MM = 10;
 
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -55,14 +55,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
     const printRoot = document.createElement("div");
     printRoot.style.position = "fixed";
-    printRoot.style.left = "0";
+    printRoot.style.left = "-10000px";
     printRoot.style.top = "0";
     printRoot.style.width = `${EXPORT_WIDTH_PX}px`;
     printRoot.style.background = "#ffffff";
-    printRoot.style.opacity = "0";
-    printRoot.style.pointerEvents = "none";
-    printRoot.style.zIndex = "2147483647";
+    printRoot.style.zIndex = "-1";
     printRoot.style.overflow = "hidden";
+    printRoot.style.pointerEvents = "none";
+
     document.body.appendChild(printRoot);
 
     const objectUrlsToRevoke: string[] = [];
@@ -72,12 +72,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       const clone = original.cloneNode(true) as HTMLElement;
       clone.classList.add("pdf-mode");
+
       clone.style.width = `${EXPORT_WIDTH_PX}px`;
       clone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
       clone.style.margin = "0";
       clone.style.background = "#ffffff";
       clone.style.boxSizing = "border-box";
       clone.style.transform = "none";
+      clone.style.minHeight = "auto";
+      clone.style.height = "auto";
+
+      printRoot.appendChild(clone);
 
       clone.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
         (el as HTMLElement).style.display = "none";
@@ -87,26 +92,26 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       // FILTRO CATEGORÍA
       // =========================
       if (opts?.category) {
-        const wanted = opts.category;
+        const wanted = opts.category.trim().toLowerCase();
 
         const cards = Array.from(
           clone.querySelectorAll(".product-pdf")
         ) as HTMLElement[];
 
         cards.forEach((card) => {
-          const cat = (card.dataset.category || "").trim() || "Sin categoría";
-          if (cat.toLowerCase() !== wanted.toLowerCase()) {
+          const cat = ((card.dataset.category || "").trim() || "Sin categoría").toLowerCase();
+
+          if (cat !== wanted) {
             card.remove();
           }
         });
       }
 
       // =========================
-      // FORZAR LAYOUT PDF ESTABLE
-      // En móvil: 1 columna para evitar cortes raros
-      // En desktop: 2 columnas como ya lo tenías
+      // GRID LAYOUT
       // =========================
       const productsGrid = clone.querySelector(".products-grid") as HTMLElement | null;
+
       if (productsGrid) {
         productsGrid.style.display = "grid";
         productsGrid.style.gridTemplateColumns = isMobile
@@ -121,9 +126,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       clone.querySelectorAll(".product-pdf").forEach((el) => {
         const card = el as HTMLElement;
+
         card.style.breakInside = "avoid";
         card.style.pageBreakInside = "avoid";
         (card.style as any).webkitColumnBreakInside = "avoid";
+
         card.style.boxSizing = "border-box";
         card.style.width = "100%";
         card.style.maxWidth = "100%";
@@ -138,18 +145,55 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       await Promise.all(
         imgs.map(async (img) => {
           const id = img.dataset.imgid;
+
+          img.setAttribute("loading", "eager");
+          img.setAttribute("decoding", "sync");
+          img.crossOrigin = "anonymous";
+          img.referrerPolicy = "no-referrer";
+
           if (!img.src && id) {
             const url = await getImageUrl(id);
-            if (url) img.src = url;
-          }
-
-          if (img.src.startsWith("http")) {
-            img.crossOrigin = "anonymous";
+            if (url) {
+              img.src = url;
+              if (url.startsWith("blob:")) objectUrlsToRevoke.push(url);
+            }
           }
         })
       );
 
       await Promise.all(imgs.map(waitLoad));
+
+      // fallback para imágenes remotas que no cargaron bien
+      await Promise.all(
+        imgs.map(async (img) => {
+          if (img.naturalWidth > 0) return;
+
+          const src = img.getAttribute("src") || "";
+          if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
+
+          try {
+            const resp = await fetch(src, { mode: "cors" });
+            const blob = await resp.blob();
+            const objUrl = URL.createObjectURL(blob);
+            objectUrlsToRevoke.push(objUrl);
+
+            img.crossOrigin = "anonymous";
+            img.src = objUrl;
+            await waitLoad(img);
+          } catch {
+            // no bloquea exportación
+          }
+        })
+      );
+
+      imgs.forEach((img) => {
+        img.style.height = "auto";
+        img.style.objectFit = "contain";
+        img.style.objectPosition = "center";
+        img.style.display = "block";
+        img.style.margin = "0 auto";
+      });
+
       await waitTwoFrames();
 
       if ("fonts" in document) {
@@ -157,20 +201,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           await (document as any).fonts.ready;
         } catch { }
       }
-
-      await waitTwoFrames();
-
-      // =========================
-      // CAPTURA DOM
-      // =========================
-      const viewport = document.createElement("div");
-      viewport.style.position = "relative";
-      viewport.style.width = `${EXPORT_WIDTH_PX}px`;
-      viewport.style.overflow = "hidden";
-      viewport.style.background = "#ffffff";
-      viewport.style.boxSizing = "border-box";
-      viewport.appendChild(clone);
-      printRoot.appendChild(viewport);
 
       await waitTwoFrames();
 
@@ -188,6 +218,21 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const linkAreasCss: LinkArea[] = [];
       const rootRectForLinks = clone.getBoundingClientRect();
 
+      const pushLinkArea = (el: HTMLElement, url: string) => {
+        const rect = el.getBoundingClientRect();
+
+        if (!url || rect.width <= 0 || rect.height <= 0) return;
+
+        linkAreasCss.push({
+          url,
+          left: rect.left - rootRectForLinks.left,
+          top: rect.top - rootRectForLinks.top,
+          width: rect.width,
+          height: rect.height,
+        });
+      };
+
+      // 1) Tarjetas producto => WhatsApp
       const waFromDom =
         clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
 
@@ -201,31 +246,65 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         for (const el of productTargets) {
           const name = (el.dataset.productName || "").trim();
           const price = (el.dataset.productPrice || "").trim();
+
           if (!name) continue;
 
           const msg =
             `Hola 👋, quiero hacer un pedido:\n` +
             `• Producto: ${name}\n` +
-            `• Precio: ${formatCurrency(Number(price))}`;
+            `• Precio: ${formatCurrency(Number(price || 0))}`;
 
-          const url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
+          const url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(
+            msg
+          )}`;
 
-          const rect = el.getBoundingClientRect();
-
-          linkAreasCss.push({
-            url,
-            left: rect.left - rootRectForLinks.left,
-            top: rect.top - rootRectForLinks.top,
-            width: rect.width,
-            height: rect.height,
-          });
+          pushLinkArea(el, url);
         }
       }
 
+      // 2) Links normales => redes / web / etc.
+      const anchors = Array.from(
+        clone.querySelectorAll("a[href]")
+      ) as HTMLAnchorElement[];
+
+      for (const a of anchors) {
+        const href = (a.getAttribute("href") || "").trim();
+        if (!href) continue;
+
+        // Evita duplicar si alguna tarjeta de producto también es un <a>
+        if (a.matches('[data-pdf-link="product"]')) continue;
+
+        pushLinkArea(a, href);
+      }
+
       // =========================
-      // PDF DIMENSIONES
+      // CAPTURA COMPLETA
       // =========================
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      const canvas = await html2canvas(clone, {
+        scale: isMobile ? 2 : Math.min(2, window.devicePixelRatio || 1),
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: EXPORT_WIDTH_PX,
+        windowWidth: EXPORT_WIDTH_PX,
+        windowHeight: clone.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+        onclone: (doc) => {
+          const el = doc.getElementById("catalog-capture-area");
+          el?.classList.add("pdf-mode");
+        },
+      });
+
+      // =========================
+      // PDF
+      // =========================
+      const pdf = new jsPDF({
+        orientation: "p",
+        unit: "mm",
+        format: "a4",
+      });
 
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
@@ -233,93 +312,91 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const usableWmm = pageW - PDF_MARGIN_MM * 2;
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
-      const rootRect = clone.getBoundingClientRect();
-      const domWidthCss = Math.ceil(rootRect.width);
-      const totalHeightCss = Math.ceil(rootRect.height);
+      const pxPerMm = canvas.width / usableWmm;
+      const pageHeightPx = Math.floor(usableHmm * pxPerMm);
 
-      const pxPerMmCss = domWidthCss / usableWmm;
-      const pageHeightCss = Math.floor(usableHmm * pxPerMmCss);
+      const domHeight =
+        clone.scrollHeight || clone.getBoundingClientRect().height || 1;
 
-      // =========================
-      // PAGINACIÓN POR TARJETA
-      // En móvil 1 columna => esto ya queda estable
-      // =========================
+      const scaleY = canvas.height / domHeight;
+
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf")
       ) as HTMLElement[];
 
-      const cardBoxes = cards
-        .map((card) => {
-          const r = card.getBoundingClientRect();
-          return {
-            top: Math.round(r.top - rootRect.top),
-            bottom: Math.round(r.bottom - rootRect.top),
-            height: Math.round(r.height),
-          };
-        })
-        .sort((a, b) => a.top - b.top);
+      const rootRect = clone.getBoundingClientRect();
 
-      const safety = isMobile ? 28 : 12;
-      const effectivePageHeight = Math.max(200, pageHeightCss - safety);
+      const getMarginBottom = (el: HTMLElement) => {
+        const mb = window.getComputedStyle(el).marginBottom;
+        const n = parseFloat(mb || "0");
+        return Number.isFinite(n) ? n : 0;
+      };
 
-      const pageRanges: { startY: number; endY: number }[] = [];
-      let startY = 0;
+      const bpSet = new Set<number>();
+      bpSet.add(0);
+      bpSet.add(canvas.height);
 
-      while (startY < totalHeightCss) {
-        const idealEnd = Math.min(startY + effectivePageHeight, totalHeightCss);
-        let endY = idealEnd;
+      cards.forEach((card) => {
+        const r = card.getBoundingClientRect();
+        const bottomCss = (r.bottom - rootRect.top) + getMarginBottom(card);
+        const bottomCanvas = Math.floor(bottomCss * scaleY);
 
-        for (const box of cardBoxes) {
-          const startsInPage = box.top >= startY && box.top < idealEnd;
-          const crossesBoundary = box.bottom > idealEnd;
+        bpSet.add(Math.max(0, Math.min(canvas.height, bottomCanvas - 4)));
+      });
 
-          if (startsInPage && crossesBoundary) {
-            endY = box.top;
-            break;
-          }
+      const breakpoints = Array.from(bpSet)
+        .filter((v) => Number.isFinite(v))
+        .map((v) => Math.max(0, Math.min(canvas.height, Math.floor(v))))
+        .sort((a, b) => a - b);
+
+      const pickBreak = (offset: number, limit: number) => {
+        let chosen = -1;
+
+        for (let i = 0; i < breakpoints.length; i++) {
+          const v = breakpoints[i];
+          if (v <= limit && v > offset) chosen = v;
+          if (v > limit) break;
         }
 
-        if (endY <= startY) {
-          endY = idealEnd;
-        }
+        return chosen;
+      };
 
-        pageRanges.push({ startY, endY });
-        startY = endY;
-      }
+      let offsetY = 0;
+      let pageIndex = 0;
 
-      // =========================
-      // RENDER
-      // =========================
-      const scale = isMobile ? 1.5 : Math.min(2, window.devicePixelRatio || 1);
+      while (offsetY < canvas.height) {
+        const idealEnd = offsetY + pageHeightPx;
+        let endY = pickBreak(offsetY, idealEnd);
 
-      for (let i = 0; i < pageRanges.length; i++) {
-        const { startY, endY } = pageRanges[i];
+        if (endY === -1) endY = Math.min(idealEnd, canvas.height);
 
-        const overlap = i === 0 ? 0 : 2;
-        const renderStartY = Math.max(0, startY - overlap);
-        const sliceHeightCss = endY - renderStartY;
+        const sliceHeight = endY - offsetY;
+        if (sliceHeight <= 0) break;
 
-        viewport.style.height = `${sliceHeightCss}px`;
-        clone.style.transform = `translateY(-${renderStartY}px)`;
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
 
-        await waitTwoFrames();
+        const ctx = pageCanvas.getContext("2d")!;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
-        const canvas = await html2canvas(viewport, {
-          scale,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          width: EXPORT_WIDTH_PX,
-          height: sliceHeightCss,
-          windowWidth: EXPORT_WIDTH_PX,
-          windowHeight: sliceHeightCss,
-          scrollX: 0,
-          scrollY: 0,
-        });
+        ctx.drawImage(
+          canvas,
+          0,
+          offsetY,
+          canvas.width,
+          sliceHeight,
+          0,
+          0,
+          canvas.width,
+          sliceHeight
+        );
 
-        const img = canvas.toDataURL("image/jpeg", isIOS ? 0.82 : 0.92);
-        const sliceHmm = sliceHeightCss / pxPerMmCss;
+        const img = pageCanvas.toDataURL("image/jpeg", isIOS ? 0.82 : 0.92);
+        const sliceHmm = sliceHeight / pxPerMm;
 
-        if (i > 0) pdf.addPage();
+        if (pageIndex > 0) pdf.addPage();
 
         pdf.addImage(
           img,
@@ -332,22 +409,31 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           "FAST"
         );
 
+        // =========================
+        // LINKS DE ESTA PÁGINA
+        // =========================
+        const pageStartCss = offsetY / scaleY;
+        const pageEndCss = endY / scaleY;
+        const cssPxPerMm = rootRect.width / usableWmm;
+
         for (const la of linkAreasCss) {
-          const visibleTop = Math.max(la.top, startY);
-          const visibleBottom = Math.min(la.top + la.height, endY);
+          const visibleTopCss = Math.max(la.top, pageStartCss);
+          const visibleBottomCss = Math.min(la.top + la.height, pageEndCss);
 
-          if (visibleBottom <= visibleTop) continue;
+          if (visibleBottomCss <= visibleTopCss) continue;
 
-          const xMm = PDF_MARGIN_MM + la.left / pxPerMmCss;
-          const yMm = PDF_MARGIN_MM + (visibleTop - renderStartY) / pxPerMmCss;
-          const wMm = la.width / pxPerMmCss;
-          const hMm = (visibleBottom - visibleTop) / pxPerMmCss;
+          const xMm = PDF_MARGIN_MM + la.left / cssPxPerMm;
+          const yMm =
+            PDF_MARGIN_MM + (visibleTopCss - pageStartCss) / cssPxPerMm;
+          const wMm = la.width / cssPxPerMm;
+          const hMm = (visibleBottomCss - visibleTopCss) / cssPxPerMm;
 
           pdf.link(xMm, yMm, wMm, hMm, { url: la.url });
         }
-      }
 
-      clone.style.transform = "none";
+        offsetY = endY;
+        pageIndex++;
+      }
 
       const safeFileName =
         (opts?.overrideFileName || fileName)

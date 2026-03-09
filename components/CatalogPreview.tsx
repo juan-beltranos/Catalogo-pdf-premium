@@ -350,7 +350,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
         <div className="px-4 py-6 md:p-10 md:pt-4 flex-grow">
           <div
-            className={`products-grid grid grid-cols-1 md:grid-cols-2 ${isMinimalist ? 'gap-x-7 gap-y-8' : 'gap-x-5 gap-y-3'
+            className={`products-grid grid grid-cols-1 md:grid-cols-2 ${isMinimalist ? 'gap-x-7 gap-y-8' : 'gap-x-5 gap-y-6'
               }`}
           >
             {orderedProducts.map((product) => {
