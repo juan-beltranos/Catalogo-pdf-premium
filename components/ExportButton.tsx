@@ -34,6 +34,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     const PDF_MARGIN_MM = 10;
 
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -61,6 +62,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     printRoot.style.opacity = "0";
     printRoot.style.pointerEvents = "none";
     printRoot.style.zIndex = "2147483647";
+    printRoot.style.overflow = "hidden";
     document.body.appendChild(printRoot);
 
     const objectUrlsToRevoke: string[] = [];
@@ -74,6 +76,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       clone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
       clone.style.margin = "0";
       clone.style.background = "#ffffff";
+      clone.style.boxSizing = "border-box";
+      clone.style.transform = "none";
 
       clone.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
         (el as HTMLElement).style.display = "none";
@@ -98,6 +102,35 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       }
 
       // =========================
+      // FORZAR LAYOUT PDF ESTABLE
+      // En móvil: 1 columna para evitar cortes raros
+      // En desktop: 2 columnas como ya lo tenías
+      // =========================
+      const productsGrid = clone.querySelector(".products-grid") as HTMLElement | null;
+      if (productsGrid) {
+        productsGrid.style.display = "grid";
+        productsGrid.style.gridTemplateColumns = isMobile
+          ? "minmax(0, 1fr)"
+          : "repeat(2, minmax(0, 1fr))";
+        productsGrid.style.columnGap = isMobile ? "0px" : "18px";
+        productsGrid.style.rowGap = isMobile ? "18px" : "24px";
+        productsGrid.style.alignItems = "start";
+        productsGrid.style.width = "100%";
+        productsGrid.style.boxSizing = "border-box";
+      }
+
+      clone.querySelectorAll(".product-pdf").forEach((el) => {
+        const card = el as HTMLElement;
+        card.style.breakInside = "avoid";
+        card.style.pageBreakInside = "avoid";
+        (card.style as any).webkitColumnBreakInside = "avoid";
+        card.style.boxSizing = "border-box";
+        card.style.width = "100%";
+        card.style.maxWidth = "100%";
+        card.style.margin = "0";
+      });
+
+      // =========================
       // ASEGURAR IMÁGENES
       // =========================
       const imgs = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
@@ -117,6 +150,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       );
 
       await Promise.all(imgs.map(waitLoad));
+      await waitTwoFrames();
+
+      if ("fonts" in document) {
+        try {
+          await (document as any).fonts.ready;
+        } catch { }
+      }
+
+      await waitTwoFrames();
 
       // =========================
       // CAPTURA DOM
@@ -124,6 +166,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const viewport = document.createElement("div");
       viewport.style.position = "relative";
       viewport.style.width = `${EXPORT_WIDTH_PX}px`;
+      viewport.style.overflow = "hidden";
+      viewport.style.background = "#ffffff";
+      viewport.style.boxSizing = "border-box";
       viewport.appendChild(clone);
       printRoot.appendChild(viewport);
 
@@ -161,7 +206,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           const msg =
             `Hola 👋, quiero hacer un pedido:\n` +
             `• Producto: ${name}\n` +
-            `• Precio: ${price}`;
+            `• Precio: ${formatCurrency(Number(price))}`;
 
           const url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
 
@@ -196,68 +241,66 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const pageHeightCss = Math.floor(usableHmm * pxPerMmCss);
 
       // =========================
-      // DETECTAR FILAS
+      // PAGINACIÓN POR TARJETA
+      // En móvil 1 columna => esto ya queda estable
       // =========================
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf")
       ) as HTMLElement[];
 
-      const rows: { top: number; bottom: number }[] = [];
-      const tolerance = 6;
+      const cardBoxes = cards
+        .map((card) => {
+          const r = card.getBoundingClientRect();
+          return {
+            top: Math.round(r.top - rootRect.top),
+            bottom: Math.round(r.bottom - rootRect.top),
+            height: Math.round(r.height),
+          };
+        })
+        .sort((a, b) => a.top - b.top);
 
-      for (const card of cards) {
-        const r = card.getBoundingClientRect();
-        const top = Math.round(r.top - rootRect.top);
-        const bottom = Math.round(r.bottom - rootRect.top);
-
-        const last = rows[rows.length - 1];
-
-        if (!last || Math.abs(last.top - top) > tolerance) {
-          rows.push({ top, bottom });
-        } else {
-          last.bottom = Math.max(last.bottom, bottom);
-        }
-      }
-
-      const safety = isIOS ? 14 : 4;
-      const effectivePageHeight = pageHeightCss - safety;
+      const safety = isMobile ? 28 : 12;
+      const effectivePageHeight = Math.max(200, pageHeightCss - safety);
 
       const pageRanges: { startY: number; endY: number }[] = [];
+      let startY = 0;
 
-      let offsetY = 0;
-
-      while (offsetY < totalHeightCss) {
-        const idealEnd = Math.min(offsetY + effectivePageHeight, totalHeightCss);
-
+      while (startY < totalHeightCss) {
+        const idealEnd = Math.min(startY + effectivePageHeight, totalHeightCss);
         let endY = idealEnd;
 
-        for (const row of rows) {
-          if (row.top >= offsetY && row.top < idealEnd) {
-            if (row.bottom > idealEnd) {
-              endY = row.top;
-              break;
-            }
+        for (const box of cardBoxes) {
+          const startsInPage = box.top >= startY && box.top < idealEnd;
+          const crossesBoundary = box.bottom > idealEnd;
+
+          if (startsInPage && crossesBoundary) {
+            endY = box.top;
+            break;
           }
         }
 
-        if (endY <= offsetY) endY = idealEnd;
+        if (endY <= startY) {
+          endY = idealEnd;
+        }
 
-        pageRanges.push({ startY: offsetY, endY });
-
-        offsetY = endY;
+        pageRanges.push({ startY, endY });
+        startY = endY;
       }
 
       // =========================
       // RENDER
       // =========================
-      const scale = isIOS ? 1 : Math.min(2, window.devicePixelRatio || 1);
+      const scale = isMobile ? 1.5 : Math.min(2, window.devicePixelRatio || 1);
 
       for (let i = 0; i < pageRanges.length; i++) {
         const { startY, endY } = pageRanges[i];
-        const sliceHeightCss = endY - startY;
+
+        const overlap = i === 0 ? 0 : 2;
+        const renderStartY = Math.max(0, startY - overlap);
+        const sliceHeightCss = endY - renderStartY;
 
         viewport.style.height = `${sliceHeightCss}px`;
-        clone.style.transform = `translateY(-${startY}px)`;
+        clone.style.transform = `translateY(-${renderStartY}px)`;
 
         await waitTwoFrames();
 
@@ -269,10 +312,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           height: sliceHeightCss,
           windowWidth: EXPORT_WIDTH_PX,
           windowHeight: sliceHeightCss,
+          scrollX: 0,
+          scrollY: 0,
         });
 
         const img = canvas.toDataURL("image/jpeg", isIOS ? 0.82 : 0.92);
-
         const sliceHmm = sliceHeightCss / pxPerMmCss;
 
         if (i > 0) pdf.addPage();
@@ -295,8 +339,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           if (visibleBottom <= visibleTop) continue;
 
           const xMm = PDF_MARGIN_MM + la.left / pxPerMmCss;
-          const yMm = PDF_MARGIN_MM + (visibleTop - startY) / pxPerMmCss;
-
+          const yMm = PDF_MARGIN_MM + (visibleTop - renderStartY) / pxPerMmCss;
           const wMm = la.width / pxPerMmCss;
           const hMm = (visibleBottom - visibleTop) / pxPerMmCss;
 
