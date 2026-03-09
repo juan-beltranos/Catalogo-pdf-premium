@@ -79,11 +79,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
       <div
         ref={previewRef}
         id="catalog-capture-area"
-        className={`bg-white w-[800px] overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
+        className={`bg-white w-full max-w-[800px] overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
           }`}
         style={{
           minHeight: '1120px',
-          width: '800px',
           ['--brand-color' as any]: storeInfo.color || '#f97316',
         }}
       >
@@ -223,7 +222,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
         `}</style>
 
         <div
-          className={`p-10 relative overflow-hidden ${isMinimalist ? 'bg-white text-slate-900 border-b border-slate-100' : 'text-white'
+          className={`px-4 py-6 md:p-10 relative overflow-hidden ${isMinimalist ? 'bg-white text-slate-900 border-b border-slate-100' : 'text-white'
             }`}
           style={!isMinimalist ? { backgroundColor: primaryColor } : {}}
         >
@@ -248,19 +247,17 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   />
                 </div>
               )}
-              <div>
+              <div
+                className={`flex flex-col md:flex-row justify-between items-center gap-4 md:gap-6 relative z-10 ${isClassic ? 'text-center md:text-left' : ''
+                  }`}
+              >
                 <h1
-                  className={`font-extrabold uppercase tracking-tight ${isMinimalist ? 'text-2xl text-slate-900' : 'text-4xl'
+                  className={`font-extrabold uppercase tracking-tight ${isMinimalist ? 'text-xl md:text-2xl text-slate-900' : 'text-2xl md:text-4xl'
                     } ${isClassic ? 'font-serif tracking-[0.12em]' : ''}`}
                 >
                   {storeInfo.name || 'Mi Catálogo'}
                 </h1>
-                <p
-                  className={`opacity-90 font-medium ${isMinimalist ? 'text-slate-400' : 'text-white/80'
-                    }`}
-                >
-                  {isClassic ? 'Catálogo de Exclusividad' : 'Catálogo de Productos'}
-                </p>
+            
               </div>
             </div>
 
@@ -338,7 +335,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
         {storeInfo.whatsapp && (
           <div
-            className={`px-10 py-2 border-b ${isMinimalist
+            className={`px-4 md:px-10 py-2 border-b ${isMinimalist
               ? 'bg-white border-slate-100 text-slate-500'
               : isClassic
                 ? 'bg-stone-50 border-stone-100 text-stone-600'
@@ -352,9 +349,9 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
           </div>
         )}
 
-        <div className="p-10 flex-grow pt-4">
+        <div className="px-4 py-6 md:p-10 md:pt-4 flex-grow">
           <div
-            className={`products-grid grid grid-cols-2 ${isMinimalist ? 'gap-x-7 gap-y-8' : 'gap-x-5 gap-y-6'
+            className={`products-grid grid grid-cols-1 md:grid-cols-2 ${isMinimalist ? 'gap-x-7 gap-y-8' : 'gap-x-5 gap-y-6'
               }`}
           >
             {orderedProducts.map((product) => {
@@ -480,7 +477,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
         </div>
 
         <div
-          className={`mt-auto p-10 border-t border-slate-50 ${isClassic ? 'bg-stone-50/70' : ''
+          className={`mt-auto px-4 py-6 md:p-10 border-t border-slate-50 ${isClassic ? 'bg-stone-50/70' : ''
             }`}
         >
           <div className="flex flex-col gap-4">
