@@ -18,6 +18,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const categories = useMemo(() => {
     const groups = groupByCategory(products);
@@ -31,7 +32,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
     const EXPORT_WIDTH_PX = 800;
     const PDF_MARGIN_MM = 10;
-    const OVERLAP_CSS_PX = 2;
+
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -59,8 +61,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     printRoot.style.opacity = "0";
     printRoot.style.pointerEvents = "none";
     printRoot.style.zIndex = "2147483647";
-    printRoot.style.visibility = "visible";
-    printRoot.style.contain = "none";
     document.body.appendChild(printRoot);
 
     const objectUrlsToRevoke: string[] = [];
@@ -73,243 +73,64 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       clone.style.width = `${EXPORT_WIDTH_PX}px`;
       clone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
       clone.style.margin = "0";
-      clone.style.minHeight = "auto";
-      clone.style.height = "auto";
-      clone.style.transform = "none";
-      clone.style.transformOrigin = "top left";
-      clone.style.willChange = "auto";
       clone.style.background = "#ffffff";
-      clone.style.backgroundColor = "#ffffff";
-      clone.style.opacity = "1";
-      clone.style.filter = "none";
-      (clone.style as any).backdropFilter = "none";
-      (clone.style as any).webkitBackdropFilter = "none";
-      clone.style.boxShadow = "none";
 
       clone.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
         (el as HTMLElement).style.display = "none";
       });
 
-      // Normalización general
-      const allNodes = Array.from(clone.querySelectorAll("*")) as HTMLElement[];
-      allNodes.forEach((el) => {
-        const cs = window.getComputedStyle(el);
-
-        if (cs.filter && cs.filter !== "none") el.style.filter = "none";
-        if ((cs as any).backdropFilter && (cs as any).backdropFilter !== "none") {
-          (el.style as any).backdropFilter = "none";
-          (el.style as any).webkitBackdropFilter = "none";
-        }
-        if (cs.boxShadow && cs.boxShadow !== "none") el.style.boxShadow = "none";
-        if ((cs as any).mixBlendMode && (cs as any).mixBlendMode !== "normal") {
-          (el.style as any).mixBlendMode = "normal";
-        }
-      });
-
-      clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.display = 'inline-flex';
-        e.style.alignItems = 'center';
-        e.style.justifyContent = 'center';
-        e.style.lineHeight = '1';
-        e.style.verticalAlign = 'top';
-        e.style.paddingTop = '0';
-        e.style.paddingBottom = '0';
-        e.style.boxSizing = 'border-box';
-        e.style.whiteSpace = 'nowrap';
-        e.style.minHeight = '36px';
-      });
-
-      clone.querySelectorAll('[data-category-badge="true"]').forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.display = 'inline-flex';
-        e.style.alignItems = 'center';
-        e.style.justifyContent = 'center';
-        e.style.lineHeight = '1';
-        e.style.verticalAlign = 'top';
-        e.style.paddingTop = '0';
-        e.style.paddingBottom = '0';
-        e.style.boxSizing = 'border-box';
-        e.style.whiteSpace = 'nowrap';
-        e.style.minHeight = '24px';
-      });
-
       // =========================
-      // 0) FILTRO POR CATEGORÍA
+      // FILTRO CATEGORÍA
       // =========================
       if (opts?.category) {
         const wanted = opts.category;
 
-        const cards = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
+        const cards = Array.from(
+          clone.querySelectorAll(".product-pdf")
+        ) as HTMLElement[];
+
         cards.forEach((card) => {
           const cat = (card.dataset.category || "").trim() || "Sin categoría";
-          const normalize = (s: string) => s.trim().toLowerCase();
-
-          if (normalize(cat) !== normalize(wanted)) {
+          if (cat.toLowerCase() !== wanted.toLowerCase()) {
             card.remove();
           }
         });
       }
 
       // =========================
-      // 1) LIMPIEZA VISUAL EXACTA DEL CARD
+      // ASEGURAR IMÁGENES
       // =========================
-      const cards = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
-      cards.forEach((card) => {
-        card.style.breakInside = "avoid";
-        (card.style as any).pageBreakInside = "avoid";
-        card.style.background = "#ffffff";
-        card.style.backgroundColor = "#ffffff";
-        card.style.boxShadow = "none";
-        card.style.filter = "none";
-        card.style.opacity = "1";
-      });
-
-      // Contenedor visual del producto: blanco real, sin sombras raras
-      clone.querySelectorAll(".product-media").forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.background = "#ffffff";
-        e.style.backgroundColor = "#ffffff";
-        e.style.boxShadow = "none";
-        e.style.filter = "none";
-        e.style.opacity = "1";
-        e.style.borderColor = "#e5e7eb";
-      });
-
-      // Cualquier wrapper interno del media también blanco
-      clone.querySelectorAll(".product-media *").forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.boxShadow = "none";
-        e.style.filter = "none";
-        (e.style as any).backdropFilter = "none";
-        (e.style as any).webkitBackdropFilter = "none";
-      });
-
-      // Placeholder "Sin Foto"
-      clone.querySelectorAll(".product-media .bg-slate-50").forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.background = "#ffffff";
-        e.style.backgroundColor = "#ffffff";
-        e.style.color = "#cbd5e1";
-      });
-
-      // Ocultar overlay hover dentro del producto
-      clone.querySelectorAll(".product-media .absolute.inset-0").forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.display = "none";
-      });
-
-      // Badge destacado sin sombra
-      clone.querySelectorAll('[data-featured-badge="true"]').forEach((el) => {
-        const e = el as HTMLElement;
-        e.style.boxShadow = "none";
-        e.style.filter = "none";
-      });
-
-      // Skeletons / shimmer si existen
-      clone
-        .querySelectorAll(
-          '[data-skeleton="true"], .skeleton, .animate-pulse, .shimmer, [aria-busy="true"]'
-        )
-        .forEach((el) => {
-          (el as HTMLElement).style.display = "none";
-        });
-
-      // =========================
-      // 2) ASEGURAR IMÁGENES
-      // =========================
-      const imgsAll = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
+      const imgs = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
 
       await Promise.all(
-        imgsAll.map(async (img) => {
-          const hasSrc = !!img.getAttribute("src")?.trim();
+        imgs.map(async (img) => {
           const id = img.dataset.imgid;
-          const currentSrc = img.getAttribute("src") || "";
-
-          img.setAttribute("loading", "eager");
-          img.setAttribute("decoding", "sync");
-
-          if (currentSrc.startsWith("http")) {
-            img.crossOrigin = "anonymous";
-            img.referrerPolicy = "no-referrer";
-          }
-
-          if (!hasSrc && id) {
+          if (!img.src && id) {
             const url = await getImageUrl(id);
-            if (url) {
-              img.src = url;
-              if (url.startsWith("blob:")) objectUrlsToRevoke.push(url);
-            }
+            if (url) img.src = url;
           }
-        })
-      );
 
-      await Promise.all(imgsAll.map(waitLoad));
-
-      await Promise.all(
-        imgsAll.map(async (img) => {
-          if (img.naturalWidth > 0) return;
-
-          const src = img.getAttribute("src") || "";
-          if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
-
-          try {
-            const resp = await fetch(src, { mode: "cors" });
-            const blob = await resp.blob();
-            const objUrl = URL.createObjectURL(blob);
-            objectUrlsToRevoke.push(objUrl);
-
+          if (img.src.startsWith("http")) {
             img.crossOrigin = "anonymous";
-            img.src = objUrl;
-            await waitLoad(img);
-          } catch {
-            // no bloquea
           }
         })
       );
 
-      imgsAll.forEach((img) => {
-        img.style.width = "auto";
-        img.style.height = "auto";
-        img.style.objectFit = "contain";
-        img.style.objectPosition = "center";
-        img.style.display = "block";
-        img.style.background = "#ffffff";
-        img.style.backgroundColor = "#ffffff";
-        img.style.boxShadow = "none";
-        img.style.filter = "none";
-        img.style.opacity = "1";
-      });
+      await Promise.all(imgs.map(waitLoad));
 
       // =========================
-      // 3) HOST DE CAPTURA
+      // CAPTURA DOM
       // =========================
       const viewport = document.createElement("div");
       viewport.style.position = "relative";
       viewport.style.width = `${EXPORT_WIDTH_PX}px`;
-      viewport.style.overflow = "hidden";
-      viewport.style.background = "#ffffff";
-      viewport.style.backgroundColor = "#ffffff";
-      viewport.style.margin = "0";
-      viewport.style.padding = "0";
-      viewport.style.boxShadow = "none";
-      viewport.style.filter = "none";
-      (viewport.style as any).backdropFilter = "none";
-      (viewport.style as any).webkitBackdropFilter = "none";
-
       viewport.appendChild(clone);
       printRoot.appendChild(viewport);
 
       await waitTwoFrames();
 
-      if ((document as any).fonts?.ready) {
-        await (document as any).fonts.ready;
-      }
-
-      await waitTwoFrames();
-
       // =========================
-      // 4) CAPTURAR LINKS
+      // LINKS
       // =========================
       type LinkArea = {
         url: string;
@@ -321,30 +142,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       const linkAreasCss: LinkArea[] = [];
       const rootRectForLinks = clone.getBoundingClientRect();
-
-      const socialLinks = Array.from(
-        clone.querySelectorAll('a[data-pdf-link="social"]')
-      ) as HTMLAnchorElement[];
-
-      for (const a of socialLinks) {
-        const href = (a.getAttribute("href") || "").trim();
-        if (!href) continue;
-
-        const rect = a.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) continue;
-
-        const left = rect.left - rootRectForLinks.left;
-        const top = rect.top - rootRectForLinks.top;
-        const url = href.startsWith("http") ? href : `https://${href}`;
-
-        linkAreasCss.push({
-          url,
-          left,
-          top,
-          width: rect.width,
-          height: rect.height,
-        });
-      }
 
       const waFromDom =
         clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
@@ -362,32 +159,26 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           if (!name) continue;
 
           const msg =
-                `Hola 👋, quiero hacer un pedido:\n` +
+            `Hola 👋, quiero hacer un pedido:\n` +
             `• Producto: ${name}\n` +
-            `• Precio: ${price}\n` +
-            `¿Me confirmas disponibilidad?`;
-          
+            `• Precio: ${price}`;
+
           const url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
 
           const rect = el.getBoundingClientRect();
-          if (rect.width <= 0 || rect.height <= 0) continue;
-
-          const left = rect.left - rootRectForLinks.left;
-          const top = rect.top - rootRectForLinks.top;
-          const pad = 2;
 
           linkAreasCss.push({
             url,
-            left: left - pad,
-            top: top - pad,
-            width: rect.width + pad * 2,
-            height: rect.height + pad * 2,
+            left: rect.left - rootRectForLinks.left,
+            top: rect.top - rootRectForLinks.top,
+            width: rect.width,
+            height: rect.height,
           });
         }
       }
 
       // =========================
-      // 5) MEDIDAS PDF / DOM
+      // PDF DIMENSIONES
       // =========================
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
 
@@ -398,68 +189,71 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
       const rootRect = clone.getBoundingClientRect();
-      const domWidthCss = Math.ceil(rootRect.width || EXPORT_WIDTH_PX);
-      const totalHeightCss = Math.ceil(rootRect.height || clone.scrollHeight || 1);
+      const domWidthCss = Math.ceil(rootRect.width);
+      const totalHeightCss = Math.ceil(rootRect.height);
 
       const pxPerMmCss = domWidthCss / usableWmm;
       const pageHeightCss = Math.floor(usableHmm * pxPerMmCss);
 
       // =========================
-      // 6) BREAKPOINTS
+      // DETECTAR FILAS
       // =========================
-      const bpSet = new Set<number>();
-      bpSet.add(0);
-      bpSet.add(totalHeightCss);
+      const cards = Array.from(
+        clone.querySelectorAll(".product-pdf")
+      ) as HTMLElement[];
 
-      const cardsAfterLayout = Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[];
-      for (const card of cardsAfterLayout) {
+      const rows: { top: number; bottom: number }[] = [];
+      const tolerance = 6;
+
+      for (const card of cards) {
         const r = card.getBoundingClientRect();
-        const topCss = Math.round(r.top - rootRect.top);
-        bpSet.add(Math.max(0, Math.min(totalHeightCss, topCss)));
+        const top = Math.round(r.top - rootRect.top);
+        const bottom = Math.round(r.bottom - rootRect.top);
+
+        const last = rows[rows.length - 1];
+
+        if (!last || Math.abs(last.top - top) > tolerance) {
+          rows.push({ top, bottom });
+        } else {
+          last.bottom = Math.max(last.bottom, bottom);
+        }
       }
 
-      const breakpoints = Array.from(bpSet)
-        .filter((v) => Number.isFinite(v))
-        .map((v) => Math.max(0, Math.min(totalHeightCss, Math.round(v))))
-        .sort((a, b) => a - b);
+      const safety = isIOS ? 14 : 4;
+      const effectivePageHeight = pageHeightCss - safety;
 
-      const pickBreak = (offsetY: number, limit: number) => {
-        let chosen = -1;
-        for (let i = 0; i < breakpoints.length; i++) {
-          const v = breakpoints[i];
-          if (v <= limit && v > offsetY) chosen = v;
-          if (v > limit) break;
-        }
-        return chosen;
-      };
+      const pageRanges: { startY: number; endY: number }[] = [];
 
-      const pageRanges: Array<{ startY: number; endY: number }> = [];
       let offsetY = 0;
 
       while (offsetY < totalHeightCss) {
-        const idealEnd = offsetY + pageHeightCss;
+        const idealEnd = Math.min(offsetY + effectivePageHeight, totalHeightCss);
 
-        let endY = pickBreak(offsetY, idealEnd);
-        if (endY === -1) endY = Math.min(idealEnd, totalHeightCss);
+        let endY = idealEnd;
 
-        if (endY <= offsetY) {
-          endY = Math.min(offsetY + pageHeightCss, totalHeightCss);
+        for (const row of rows) {
+          if (row.top >= offsetY && row.top < idealEnd) {
+            if (row.bottom > idealEnd) {
+              endY = row.top;
+              break;
+            }
+          }
         }
+
+        if (endY <= offsetY) endY = idealEnd;
 
         pageRanges.push({ startY: offsetY, endY });
 
-        let nextOffset = endY - OVERLAP_CSS_PX;
-        if (nextOffset <= offsetY) nextOffset = endY;
-        offsetY = nextOffset;
+        offsetY = endY;
       }
 
       // =========================
-      // 7) RENDERIZAR CADA PÁGINA
+      // RENDER
       // =========================
-      const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      const scale = isIOS ? 1 : Math.min(2, window.devicePixelRatio || 1);
 
-      for (let pageIndex = 0; pageIndex < pageRanges.length; pageIndex++) {
-        const { startY, endY } = pageRanges[pageIndex];
+      for (let i = 0; i < pageRanges.length; i++) {
+        const { startY, endY } = pageRanges[i];
         const sliceHeightCss = endY - startY;
 
         viewport.style.height = `${sliceHeightCss}px`;
@@ -467,50 +261,24 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
         await waitTwoFrames();
 
-        const pageCanvas = await html2canvas(viewport, {
+        const canvas = await html2canvas(viewport, {
           scale,
           useCORS: true,
-          allowTaint: false,
           backgroundColor: "#ffffff",
-          logging: false,
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: domWidthCss,
-          windowHeight: sliceHeightCss,
-          width: domWidthCss,
+          width: EXPORT_WIDTH_PX,
           height: sliceHeightCss,
-          imageTimeout: 15000,
-          removeContainer: true,
-          onclone: (doc) => {
-            const el = doc.getElementById("catalog-capture-area");
-            el?.classList.add("pdf-mode");
-          },
+          windowWidth: EXPORT_WIDTH_PX,
+          windowHeight: sliceHeightCss,
         });
 
-        if (!pageCanvas.width || !pageCanvas.height) {
-          throw new Error("No se pudo capturar una página del catálogo.");
-        }
+        const img = canvas.toDataURL("image/jpeg", isIOS ? 0.82 : 0.92);
 
-        const whiteCanvas = document.createElement("canvas");
-        whiteCanvas.width = pageCanvas.width;
-        whiteCanvas.height = pageCanvas.height;
-
-        const whiteCtx = whiteCanvas.getContext("2d");
-        if (!whiteCtx) throw new Error("No se pudo crear el canvas final.");
-
-        whiteCtx.fillStyle = "#ffffff";
-        whiteCtx.fillRect(0, 0, whiteCanvas.width, whiteCanvas.height);
-        whiteCtx.drawImage(pageCanvas, 0, 0);
-
-        const pageImg = whiteCanvas.toDataURL("image/jpeg", 0.95);
         const sliceHmm = sliceHeightCss / pxPerMmCss;
 
-        if (pageIndex > 0) pdf.addPage();
-        pdf.setFillColor(255, 255, 255);
-        pdf.rect(0, 0, pageW, pageH, "F");
+        if (i > 0) pdf.addPage();
 
         pdf.addImage(
-          pageImg,
+          img,
           "JPEG",
           PDF_MARGIN_MM,
           PDF_MARGIN_MM,
@@ -521,21 +289,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         );
 
         for (const la of linkAreasCss) {
-          const linkTop = la.top;
-          const linkBottom = la.top + la.height;
+          const visibleTop = Math.max(la.top, startY);
+          const visibleBottom = Math.min(la.top + la.height, endY);
 
-          const intersects = linkBottom > startY && linkTop < endY;
-          if (!intersects) continue;
-
-          const visibleTop = Math.max(linkTop, startY);
-          const visibleBottom = Math.min(linkBottom, endY);
-          const visibleH = visibleBottom - visibleTop;
-          if (visibleH <= 0) continue;
+          if (visibleBottom <= visibleTop) continue;
 
           const xMm = PDF_MARGIN_MM + la.left / pxPerMmCss;
           const yMm = PDF_MARGIN_MM + (visibleTop - startY) / pxPerMmCss;
+
           const wMm = la.width / pxPerMmCss;
-          const hMm = visibleH / pxPerMmCss;
+          const hMm = (visibleBottom - visibleTop) / pxPerMmCss;
 
           pdf.link(xMm, yMm, wMm, hMm, { url: la.url });
         }
@@ -543,11 +306,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       clone.style.transform = "none";
 
-      const baseName = opts?.overrideFileName || fileName;
       const safeFileName =
-        baseName.replace(/[^\w\s-]/gi, "").replace(/\s+/g, "-").toLowerCase() || "catalogo";
+        (opts?.overrideFileName || fileName)
+          .replace(/[^\w\s-]/gi, "")
+          .replace(/\s+/g, "-")
+          .toLowerCase() || "catalogo";
 
       const blob = pdf.output("blob");
+
       return { blob, fileName: `${safeFileName}.pdf` };
     } finally {
       objectUrlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
@@ -612,11 +378,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const file = new File([blob], fileName, { type: 'application/pdf' });
 
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: 'Catálogo',
-          text: 'Te comparto el catálogo en PDF',
-          files: [file],
-        });
+        await navigator.share({ files: [file] });
       } else {
         const msg = encodeURIComponent('Te comparto el catálogo en PDF');
         window.open(`https://wa.me/?text=${msg}`, '_blank');
@@ -624,7 +386,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       }
     } catch (error) {
       console.error(error);
-      alert('Error compartiendo PDF.');
+
+      const errorMessage =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : typeof error === "string"
+            ? error
+            : JSON.stringify(error, null, 2);
+
+      alert(`Error compartiendo PDF:\n\n${errorMessage}`);
     } finally {
       setLoading(false);
     }

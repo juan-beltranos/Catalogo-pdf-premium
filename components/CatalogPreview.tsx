@@ -257,7 +257,6 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 >
                   {storeInfo.name || 'Mi Catálogo'}
                 </h1>
-            
               </div>
             </div>
 
@@ -363,7 +362,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   href={waLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={theme.card}
+                  className={`${theme.card} product-pdf`}
                   style={{ textDecoration: 'none' }}
                   data-category={(product.category || 'Sin categoría').trim()}
                   data-pdf-link="product"
