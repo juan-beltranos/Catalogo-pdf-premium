@@ -18,6 +18,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
+  const [quality, setQuality] = useState<'normal' | 'alta'>('normal');
   const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const categories = useMemo(() => {
@@ -26,15 +27,21 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
   }, [products]);
 
   const generatePdf = async (
-    opts?: { category?: string; overrideFileName?: string }
+    opts?: { category?: string; overrideFileName?: string; quality?: 'normal' | 'alta' }
   ): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
+    // Always export at desktop width for consistent output on all devices
     const EXPORT_WIDTH_PX = 794;
     const PDF_MARGIN_MM = 10;
 
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const resolvedQuality = opts?.quality ?? quality;
+
+    // Scale: 1.5 = normal (smaller file), 2 = alta calidad (larger file)
+    const canvasScale = resolvedQuality === 'alta' ? 2 : 1.5;
+    // JPEG quality: lower = smaller file
+    const jpegQuality = resolvedQuality === 'alta' ? (isIOS ? 0.80 : 0.88) : (isIOS ? 0.60 : 0.72);
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -57,10 +64,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
     printRoot.style.position = "fixed";
     printRoot.style.left = "-10000px";
     printRoot.style.top = "0";
+    // Always use desktop width for consistent rendering
     printRoot.style.width = `${EXPORT_WIDTH_PX}px`;
     printRoot.style.background = "#ffffff";
     printRoot.style.zIndex = "-1";
-    printRoot.style.overflow = "hidden";
+    printRoot.style.overflow = "visible";
     printRoot.style.pointerEvents = "none";
 
     document.body.appendChild(printRoot);
@@ -81,6 +89,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       clone.style.transform = "none";
       clone.style.minHeight = "auto";
       clone.style.height = "auto";
+      // Ensure overflow is visible so content is not clipped
+      clone.style.overflow = "visible";
 
       printRoot.appendChild(clone);
 
@@ -108,17 +118,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       }
 
       // =========================
-      // GRID LAYOUT
+      // GRID LAYOUT — always 2 columns for consistent PDF output
       // =========================
       const productsGrid = clone.querySelector(".products-grid") as HTMLElement | null;
 
       if (productsGrid) {
         productsGrid.style.display = "grid";
-        productsGrid.style.gridTemplateColumns = isMobile
-          ? "minmax(0, 1fr)"
-          : "repeat(2, minmax(0, 1fr))";
-        productsGrid.style.columnGap = isMobile ? "0px" : "18px";
-        productsGrid.style.rowGap = isMobile ? "18px" : "24px";
+        productsGrid.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+        productsGrid.style.columnGap = "18px";
+        productsGrid.style.rowGap = "24px";
         productsGrid.style.alignItems = "start";
         productsGrid.style.width = "100%";
         productsGrid.style.boxSizing = "border-box";
@@ -202,6 +210,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         } catch { }
       }
 
+      // Extra wait to ensure layout is fully computed
+      await waitTwoFrames();
       await waitTwoFrames();
 
       // =========================
@@ -216,23 +226,35 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       };
 
       const linkAreasCss: LinkArea[] = [];
-      const rootRectForLinks = clone.getBoundingClientRect();
+
+      // getBoundingClientRect works correctly even with fixed/off-screen containers.
+      // We subtract the clone's own rect to get coordinates relative to the clone's top-left.
+      const cloneRect = clone.getBoundingClientRect();
+
+      const getOffsetRelativeTo = (el: HTMLElement): { top: number; left: number; width: number; height: number } => {
+        const r = el.getBoundingClientRect();
+        return {
+          top: r.top - cloneRect.top,
+          left: r.left - cloneRect.left,
+          width: r.width,
+          height: r.height,
+        };
+      };
 
       const pushLinkArea = (el: HTMLElement, url: string) => {
-        const rect = el.getBoundingClientRect();
-
-        if (!url || rect.width <= 0 || rect.height <= 0) return;
-
+        if (!url) return;
+        const pos = getOffsetRelativeTo(el);
+        if (pos.width <= 0 || pos.height <= 0) return;
         linkAreasCss.push({
           url,
-          left: rect.left - rootRectForLinks.left,
-          top: rect.top - rootRectForLinks.top,
-          width: rect.width,
-          height: rect.height,
+          left: pos.left,
+          top: pos.top,
+          width: pos.width,
+          height: pos.height,
         });
       };
 
-      // 1) Tarjetas producto => WhatsApp
+      // 1) Tarjetas producto => WhatsApp (use href already set on the cloned <a> tag)
       const waFromDom =
         clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
 
@@ -242,24 +264,23 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         clone.querySelectorAll('[data-pdf-link="product"]')
       ) as HTMLElement[];
 
-      if (businessWa) {
-        for (const el of productTargets) {
-          const name = (el.dataset.productName || "").trim();
-          const price = (el.dataset.productPrice || "").trim();
+      for (const el of productTargets) {
+        const name = (el.dataset.productName || "").trim();
+        const price = (el.dataset.productPrice || "").trim();
 
-          if (!name) continue;
+        if (!name) continue;
 
+        // Build WA link — prefer businessWa if available, otherwise fall back to href on the element
+        let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
+        if (businessWa) {
           const msg =
             `Hola 👋, quiero hacer un pedido:\n` +
             `• Producto: ${name}\n` +
             `• Precio: ${formatCurrency(Number(price || 0))}`;
-
-          const url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(
-            msg
-          )}`;
-
-          pushLinkArea(el, url);
+          url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
         }
+
+        if (url && url !== "#") pushLinkArea(el, url);
       }
 
       // 2) Links normales => redes / web / etc.
@@ -269,11 +290,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
 
       for (const a of anchors) {
         const href = (a.getAttribute("href") || "").trim();
-        if (!href) continue;
-
-        // Evita duplicar si alguna tarjeta de producto también es un <a>
+        if (!href || href === "#") continue;
         if (a.matches('[data-pdf-link="product"]')) continue;
-
         pushLinkArea(a, href);
       }
 
@@ -281,7 +299,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       // CAPTURA COMPLETA
       // =========================
       const canvas = await html2canvas(clone, {
-        scale: isMobile ? 2 : Math.min(2, window.devicePixelRatio || 1),
+        scale: canvasScale,
         useCORS: true,
         allowTaint: false,
         backgroundColor: "#ffffff",
@@ -298,7 +316,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       });
 
       // =========================
-      // PDF
+      // PDF — Smart page breaks based on offsetTop of cards
       // =========================
       const pdf = new jsPDF({
         orientation: "p",
@@ -312,36 +330,36 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const usableWmm = pageW - PDF_MARGIN_MM * 2;
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
-      const pxPerMm = canvas.width / usableWmm;
+      // px per mm based on canvas and export width
+      const pxPerMm = (EXPORT_WIDTH_PX * canvasScale) / usableWmm;
       const pageHeightPx = Math.floor(usableHmm * pxPerMm);
 
-      const domHeight =
-        clone.scrollHeight || clone.getBoundingClientRect().height || 1;
+      // Total DOM height of the clone (before canvas scaling)
+      const domTotalHeight = clone.scrollHeight || clone.offsetHeight || 1;
 
-      const scaleY = canvas.height / domHeight;
+      // Scale factor: canvas px per DOM px
+      const scaleY = canvas.height / domTotalHeight;
 
+      // Build breakpoints using offsetTop relative to clone (reliable in off-screen containers)
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf")
       ) as HTMLElement[];
-
-      const rootRect = clone.getBoundingClientRect();
-
-      const getMarginBottom = (el: HTMLElement) => {
-        const mb = window.getComputedStyle(el).marginBottom;
-        const n = parseFloat(mb || "0");
-        return Number.isFinite(n) ? n : 0;
-      };
 
       const bpSet = new Set<number>();
       bpSet.add(0);
       bpSet.add(canvas.height);
 
       cards.forEach((card) => {
-        const r = card.getBoundingClientRect();
-        const bottomCss = (r.bottom - rootRect.top) + getMarginBottom(card);
-        const bottomCanvas = Math.floor(bottomCss * scaleY);
+        // Get the card's bottom edge in DOM pixels relative to clone
+        const pos = getOffsetRelativeTo(card);
+        const cardBottomDomPx = pos.top + pos.height;
 
-        bpSet.add(Math.max(0, Math.min(canvas.height, bottomCanvas - 4)));
+        // Convert to canvas pixels, add small buffer so breakpoint is just after the card
+        const cardBottomCanvasPx = Math.floor(cardBottomDomPx * scaleY);
+
+        // Add a small padding (8px in canvas space) after card bottom as breakpoint
+        const bp = Math.max(0, Math.min(canvas.height, cardBottomCanvasPx + 8));
+        bpSet.add(bp);
       });
 
       const breakpoints = Array.from(bpSet)
@@ -349,26 +367,53 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         .map((v) => Math.max(0, Math.min(canvas.height, Math.floor(v))))
         .sort((a, b) => a - b);
 
-      const pickBreak = (offset: number, limit: number) => {
+      // Find the best breakpoint that fits within the page height
+      // Prefer a breakpoint just after a card bottom
+      const pickBreak = (offsetY: number, limit: number): number => {
         let chosen = -1;
-
-        for (let i = 0; i < breakpoints.length; i++) {
-          const v = breakpoints[i];
-          if (v <= limit && v > offset) chosen = v;
+        for (const v of breakpoints) {
+          if (v <= limit && v > offsetY) chosen = v;
           if (v > limit) break;
         }
-
         return chosen;
       };
 
       let offsetY = 0;
       let pageIndex = 0;
 
+      // CSS px per mm for link coordinate mapping (based on clone's actual rendered width)
+      const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
+
       while (offsetY < canvas.height) {
         const idealEnd = offsetY + pageHeightPx;
         let endY = pickBreak(offsetY, idealEnd);
 
-        if (endY === -1) endY = Math.min(idealEnd, canvas.height);
+        // If no card breakpoint fits, try to break before any card that straddles the page boundary
+        if (endY === -1) {
+          // Find if there's a card that starts before idealEnd but ends after it (would be cut)
+          // In that case, break before that card starts
+          let earliestCutCard = -1;
+          for (const card of cards) {
+            const pos = getOffsetRelativeTo(card);
+            const cardTopCanvasPx = Math.floor(pos.top * scaleY);
+            const cardBottomCanvasPx = Math.floor((pos.top + pos.height) * scaleY);
+
+            // Card straddles the page boundary
+            if (cardTopCanvasPx < idealEnd && cardBottomCanvasPx > idealEnd) {
+              // Break just before this card starts
+              const breakBefore = Math.max(offsetY + 1, cardTopCanvasPx - 4);
+              if (breakBefore > offsetY && (earliestCutCard === -1 || breakBefore < earliestCutCard)) {
+                earliestCutCard = breakBefore;
+              }
+            }
+          }
+
+          if (earliestCutCard !== -1) {
+            endY = earliestCutCard;
+          } else {
+            endY = Math.min(idealEnd, canvas.height);
+          }
+        }
 
         const sliceHeight = endY - offsetY;
         if (sliceHeight <= 0) break;
@@ -393,7 +438,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           sliceHeight
         );
 
-        const img = pageCanvas.toDataURL("image/jpeg", isIOS ? 0.82 : 0.92);
+        const img = pageCanvas.toDataURL("image/jpeg", jpegQuality);
         const sliceHmm = sliceHeight / pxPerMm;
 
         if (pageIndex > 0) pdf.addPage();
@@ -412,21 +457,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         // =========================
         // LINKS DE ESTA PÁGINA
         // =========================
-        const pageStartCss = offsetY / scaleY;
-        const pageEndCss = endY / scaleY;
-        const cssPxPerMm = rootRect.width / usableWmm;
+        // Convert canvas px offsets back to DOM px for link positioning
+        const pageStartDomPx = offsetY / scaleY;
+        const pageEndDomPx = endY / scaleY;
 
         for (const la of linkAreasCss) {
-          const visibleTopCss = Math.max(la.top, pageStartCss);
-          const visibleBottomCss = Math.min(la.top + la.height, pageEndCss);
+          const visibleTopDomPx = Math.max(la.top, pageStartDomPx);
+          const visibleBottomDomPx = Math.min(la.top + la.height, pageEndDomPx);
 
-          if (visibleBottomCss <= visibleTopCss) continue;
+          if (visibleBottomDomPx <= visibleTopDomPx) continue;
 
           const xMm = PDF_MARGIN_MM + la.left / cssPxPerMm;
-          const yMm =
-            PDF_MARGIN_MM + (visibleTopCss - pageStartCss) / cssPxPerMm;
+          const yMm = PDF_MARGIN_MM + (visibleTopDomPx - pageStartDomPx) / cssPxPerMm;
           const wMm = la.width / cssPxPerMm;
-          const hMm = (visibleBottomCss - visibleTopCss) / cssPxPerMm;
+          const hMm = (visibleBottomDomPx - visibleTopDomPx) / cssPxPerMm;
 
           pdf.link(xMm, yMm, wMm, hMm, { url: la.url });
         }
@@ -453,7 +497,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
   const handleDownloadPdfAll = async () => {
     try {
       setLoading(true);
-      const { blob, fileName: outName } = await generatePdf({ overrideFileName: fileName });
+      const { blob, fileName: outName } = await generatePdf({ overrideFileName: fileName, quality });
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -481,6 +525,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       const { blob, fileName: outName } = await generatePdf({
         category: selectedCategory,
         overrideFileName: outBase,
+        quality,
       });
 
       const url = URL.createObjectURL(blob);
@@ -502,7 +547,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
   const handleShareWhatsApp = async () => {
     try {
       setLoading(true);
-      const { blob, fileName } = await generatePdf();
+      const { blob, fileName } = await generatePdf({ quality });
 
       const file = new File([blob], fileName, { type: 'application/pdf' });
 
@@ -547,6 +592,37 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
       "
       >
         <div className="flex flex-col gap-2">
+          {/* Quality toggle */}
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs text-slate-500 font-medium">Calidad del PDF</span>
+            <div className="flex rounded-lg overflow-hidden border border-black/10 text-xs font-semibold">
+              <button
+                onClick={() => setQuality('normal')}
+                disabled={loading}
+                className={`px-3 py-1.5 transition ${quality === 'normal'
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+              >
+                Normal
+              </button>
+              <button
+                onClick={() => setQuality('alta')}
+                disabled={loading}
+                className={`px-3 py-1.5 transition ${quality === 'alta'
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+              >
+                Alta
+              </button>
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400 px-1 -mt-1">
+            {quality === 'normal'
+              ? 'Archivo más liviano (~1–3 MB) — ideal para WhatsApp'
+              : 'Mayor resolución (~4–8 MB) — mejor para imprimir'}
+          </p>
           <div className="flex gap-2">
             <button
               onClick={handleShareWhatsApp}
@@ -607,21 +683,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
               {loading ? "Creando…" : "PDF (Categoría)"}
             </button>
           </div>
-
-          {/* Row 3: PDF cada categoría */}
-          {/* <button
-            onClick={handleDownloadPdfAllCategories}
-            disabled={loading || categories.length === 0}
-            className="
-            h-12
-            rounded-xl font-semibold text-white
-            bg-slate-900 hover:bg-slate-800
-            active:scale-[0.99] transition
-            disabled:opacity-60 disabled:cursor-not-allowed
-          "
-          >
-            {loading ? "Creando…" : "PDF (Cada categoría)"}
-          </button> */}
         </div>
       </div>
     </div>
