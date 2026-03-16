@@ -236,6 +236,90 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         pushLink(a, href);
       });
 
+      // ── Fix badge/button alignment for html2canvas ──────────────────────
+      // html2canvas doesn't reliably render inline-flex centering.
+      // We force inline styles directly on each element in the clone.
+
+      // Price badges
+      clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
+        const el_ = el as HTMLElement;
+        el_.style.display = 'flex';
+        el_.style.alignItems = 'center';
+        el_.style.justifyContent = 'center';
+        el_.style.lineHeight = '1';
+        el_.style.paddingTop = '0';
+        el_.style.paddingBottom = '0';
+        const span = el_.querySelector('span');
+        if (span) {
+          span.style.display = 'block';
+          span.style.lineHeight = '1';
+          span.style.margin = '0';
+          span.style.padding = '0';
+          span.style.position = 'static';
+          span.style.transform = 'none';
+        }
+      });
+
+      // Category badges
+      clone.querySelectorAll('[data-category-badge="true"]').forEach((el) => {
+        const el_ = el as HTMLElement;
+        el_.style.display = 'flex';
+        el_.style.alignItems = 'center';
+        el_.style.justifyContent = 'center';
+        el_.style.lineHeight = '1';
+        el_.style.paddingTop = '0';
+        el_.style.paddingBottom = '0';
+        const span = el_.querySelector('span');
+        if (span) {
+          span.style.display = 'block';
+          span.style.lineHeight = '1';
+          span.style.margin = '0';
+          span.style.padding = '0';
+          span.style.position = 'static';
+          span.style.transform = 'none';
+        }
+      });
+
+      // Action hint / Comprar button — replace SVG icon with a plain unicode circle
+      // so layout doesn't depend on SVG vertical alignment
+      clone.querySelectorAll('[data-action-hint="true"]').forEach((el) => {
+        const el_ = el as HTMLElement;
+        el_.style.display = 'flex';
+        el_.style.alignItems = 'center';
+        el_.style.justifyContent = 'center';
+        el_.style.lineHeight = '1';
+        el_.style.paddingTop = '0';
+        el_.style.paddingBottom = '0';
+
+        // Find the inner span that wraps icon + text
+        const innerSpan = el_.querySelector('span') as HTMLElement | null;
+        if (innerSpan) {
+          innerSpan.style.display = 'flex';
+          innerSpan.style.alignItems = 'center';
+          innerSpan.style.justifyContent = 'center';
+          innerSpan.style.gap = '5px';
+          innerSpan.style.lineHeight = '1';
+          innerSpan.style.margin = '0';
+          innerSpan.style.padding = '0';
+          innerSpan.style.position = 'static';
+          innerSpan.style.transform = 'none';
+
+          // Replace the lucide SVG with a simple unicode WhatsApp-ish circle
+          // so it's just text and doesn't break vertical alignment
+          const svg = innerSpan.querySelector('svg');
+          if (svg) {
+            const replacement = document.createElement('span');
+            replacement.textContent = '●';
+            replacement.style.fontSize = '8px';
+            replacement.style.color = '#16a34a';
+            replacement.style.lineHeight = '1';
+            replacement.style.display = 'inline-block';
+            replacement.style.verticalAlign = 'middle';
+            svg.replaceWith(replacement);
+          }
+        }
+      });
+
       // ── Capture with html2canvas ─────────────────────────────────────────
       const canvas = await html2canvas(clone, {
         scale: canvasScale,

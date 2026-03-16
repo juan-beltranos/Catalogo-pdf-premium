@@ -13,8 +13,8 @@ export interface Product {
   quantity?: number;
 }
 
-
 export type TemplateId = 'minimalist' | 'classic' | 'modern';
+export type ImageFit = 'contain' | 'cover' | 'cover-top' | 'square-contain' | 'tall-cover';
 
 export interface StoreInfo {
   name: string;
@@ -25,6 +25,7 @@ export interface StoreInfo {
   logo?: string;
   templateId: TemplateId;
   showQuantityInPdf?: boolean;
+  imageFit?: ImageFit;
 }
 
 export type ViewMode = 'editor' | 'preview';
