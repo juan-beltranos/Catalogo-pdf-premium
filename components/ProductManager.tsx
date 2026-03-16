@@ -123,7 +123,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     });
   };
 
-
   const categories = useMemo(() => {
     const map = new Map<string, string>();
     for (const p of products) {
@@ -160,7 +159,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setEditingId(null);
     setImagePreview('');
   };
-
 
   const handleOpenEdit = async (product: Product) => {
     setFormData({
@@ -281,7 +279,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     }
   };
 
-
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
 
   type ImportItem = {
@@ -380,6 +377,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
   return (
     <div className="space-y-4 mb-24">
+      
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xl font-bold flex items-center gap-2">
@@ -410,7 +408,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         >
           Importar JSON
         </button>
- */}
+        */}
 
         <div className="flex items-center gap-2">
           {/* NUEVO: botones PDF opcionales */}
@@ -687,7 +685,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       </AnimatePresence>
 
       {/* Products grid */}
-
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -700,8 +697,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <p className="text-xs text-slate-400 mb-2">
             Arrastra el ícono <span className="font-semibold">☰</span> para ordenar los productos.
           </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-[90%] mx-auto">
 
             <AnimatePresence>
               {orderedProducts.map((product) => (
@@ -754,7 +750,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       </div>
 
                       {/* 🔹 CONTENIDO */}
-                      <div className="flex gap-4">
+                      <div className="flex gap-4 items-center">
                         <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 relative">
 
                           {product.hidden && (
