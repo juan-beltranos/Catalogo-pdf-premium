@@ -377,7 +377,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
   return (
     <div className="space-y-4 mb-24">
-      
+
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xl font-bold flex items-center gap-2">
@@ -697,7 +697,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <p className="text-xs text-slate-400 mb-2">
             Arrastra el ícono <span className="font-semibold">☰</span> para ordenar los productos.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-[90%] mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-[90%] sm:w-full mx-auto">
 
             <AnimatePresence>
               {orderedProducts.map((product) => (
@@ -759,10 +759,17 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                             </div>
                           )}
 
-                          <ProductThumb
-                            product={product}
-                            className="max-w-full max-h-full object-contain block"
-                          />
+                          {(product.image || product.imageId) ? (
+                            <ProductThumb
+                              product={product}
+                              className="max-w-full max-h-full object-contain block"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300">
+                              <span className="text-[10px] font-bold text-center leading-tight px-1">Sin foto</span>
+                            </div>
+                          )}
+
                           {product.featured && (
                             <div
                               title="Producto destacado"

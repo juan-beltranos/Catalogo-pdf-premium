@@ -249,15 +249,33 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         el_.style.lineHeight = '1';
         el_.style.paddingTop = '0';
         el_.style.paddingBottom = '0';
+        el_.style.height = '30px'; // h-9 forzado
         const span = el_.querySelector('span');
         if (span) {
-          span.style.display = 'block';
+          span.style.display = 'flex';
+          span.style.alignItems = 'center';
+          span.style.justifyContent = 'center';
           span.style.lineHeight = '1';
           span.style.margin = '0';
           span.style.padding = '0';
+          span.style.paddingTop = '1px';
+          span.style.height = '100%';
           span.style.position = 'static';
           span.style.transform = 'none';
         }
+      });
+
+      // Stock badges
+      clone.querySelectorAll('[data-stock-badge="true"]').forEach((el) => {
+        const el_ = el as HTMLElement;
+        el_.style.display = 'flex';
+        el_.style.alignItems = 'center';
+        el_.style.justifyContent = 'center';
+        el_.style.lineHeight = '1';
+        el_.style.height = '40px';
+        el_.style.paddingTop = '1px';
+        el_.style.paddingBottom = '0';
+        el_.style.gap = '3px';
       });
 
       // Category badges
@@ -269,18 +287,22 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         el_.style.lineHeight = '1';
         el_.style.paddingTop = '0';
         el_.style.paddingBottom = '0';
+        el_.style.height = '28px'; // h-7 forzado explícito
         const span = el_.querySelector('span');
         if (span) {
-          span.style.display = 'block';
+          span.style.display = 'flex';
+          span.style.alignItems = 'center';
+          span.style.justifyContent = 'center';
           span.style.lineHeight = '1';
           span.style.margin = '0';
           span.style.padding = '0';
+          span.style.paddingTop = '1px'; 
+          span.style.height = '100%';
           span.style.position = 'static';
           span.style.transform = 'none';
         }
       });
 
-      // Action hint / Comprar button — replace SVG icon with a plain unicode circle
       // so layout doesn't depend on SVG vertical alignment
       clone.querySelectorAll('[data-action-hint="true"]').forEach((el) => {
         const el_ = el as HTMLElement;
@@ -288,6 +310,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
         el_.style.alignItems = 'center';
         el_.style.justifyContent = 'center';
         el_.style.lineHeight = '1';
+        el_.style.height = '40px'
         el_.style.paddingTop = '0';
         el_.style.paddingBottom = '0';
 
@@ -303,20 +326,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ targetRef, fileName,
           innerSpan.style.padding = '0';
           innerSpan.style.position = 'static';
           innerSpan.style.transform = 'none';
-
-          // Replace the lucide SVG with a simple unicode WhatsApp-ish circle
-          // so it's just text and doesn't break vertical alignment
-          const svg = innerSpan.querySelector('svg');
-          if (svg) {
-            const replacement = document.createElement('span');
-            replacement.textContent = '●';
-            replacement.style.fontSize = '8px';
-            replacement.style.color = '#16a34a';
-            replacement.style.lineHeight = '1';
-            replacement.style.display = 'inline-block';
-            replacement.style.verticalAlign = 'middle';
-            svg.replaceWith(replacement);
-          }
         }
       });
 

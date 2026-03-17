@@ -394,21 +394,22 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       )}
 
                       {product.category && (
-                        <div
-                          data-category-badge="true"
-                          className={theme.categoryBadge}
-                        >
-                          <span>{product.category}</span>
+                        <div data-category-badge="true" className={theme.categoryBadge} style={inlineTheme.categoryBadgeStyle}>
+                          <span style={{ display: 'block', lineHeight: 1, paddingTop: '1px' }}>{product.category}</span>
                         </div>
                       )}
 
                       {(product.image || product.imageId) ? (
-                        <ProductThumb product={product} className={theme.image} />
+                        <ProductThumb
+                          product={product}
+                          className={`${theme.image} !w-full !h-full !object-contain`}
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300">
                           <span className="text-4xl font-bold">Sin Foto</span>
                         </div>
                       )}
+
                     </div>
                   </div>
 
@@ -423,7 +424,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       </div>
 
                       {showQuantityInPdf && (product.quantity ?? 0) > 0 && (
-                        <span className={theme.stockBadge}>
+                        <span className={theme.stockBadge} data-stock-badge="true">
                           Stock: <span>{product.quantity}</span>
                         </span>
                       )}
@@ -441,7 +442,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
                     {storeInfo.whatsapp && (
                       <div className={theme.actionHintWrap}>
-                        <div className={theme.actionHint} style={inlineTheme.actionStyle}>
+                        <div className={theme.actionHint} style={inlineTheme.actionStyle} data-action-hint="true">
                           <span className="inline-flex items-center gap-2">
                             <MessageCircle className="w-3 h-3 text-green-600" />
                             {isMinimalist

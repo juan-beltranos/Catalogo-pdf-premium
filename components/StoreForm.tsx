@@ -160,7 +160,7 @@ export const StoreForm: React.FC<StoreFormProps> = ({ storeInfo, onUpdate }) => 
             className="w-4 h-4 text-blue-600"
           />
           <label htmlFor="showQuantityInPdf" className="text-sm text-slate-700 font-medium">
-            Mostrar cantidad en el PDF
+            Mostrar cantidad Stock en el PDF
           </label>
         </div>
 

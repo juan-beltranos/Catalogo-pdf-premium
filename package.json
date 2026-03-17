@@ -19,6 +19,7 @@
     "@tiptap/extension-table-row": "^3.15.3",
     "@tiptap/react": "^3.15.3",
     "@tiptap/starter-kit": "^3.15.3",
+    "force": "^0.0.3",
     "framer-motion": "^12.23.26",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.0.0",

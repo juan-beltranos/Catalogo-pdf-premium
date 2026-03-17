@@ -33,23 +33,23 @@ export const getProductCardTheme = (
       `,
       mediaInner: `
         product-media relative aspect-[4/3] w-full overflow-hidden
-        rounded-[1.3rem] border border-slate-200 bg-white
+        rounded-[1.3rem] 
         flex items-center justify-center
       `,
       image: `
-        relative z-[2]
-        max-w-[210px] max-h-[82%] object-contain mx-auto block
+  relative z-[2]
+  w-full h-full object-contain mx-auto block
       `,
       featuredBadge: `
         absolute top-3 right-3 z-10 w-10 h-10 rounded-xl
         flex items-center justify-center text-white
       `,
       categoryBadge: `
-        absolute top-3 left-3 z-10 max-w-[62%] truncate
-        inline-flex items-center justify-center h-7 px-3 rounded-full
-        text-[10px] leading-none font-extrabold
-        uppercase tracking-[0.14em]
-        bg-slate-950 text-white
+  absolute top-3 left-3 z-10 max-w-[62%] truncate
+  inline-flex items-center justify-center h-7 px-3 py-0 rounded-full
+  text-[10px] leading-none font-extrabold
+  uppercase tracking-[0.14em]
+  text-white
       `,
       stockBadge: `
         inline-flex items-center gap-1 rounded-full h-7 px-3
@@ -95,22 +95,22 @@ export const getProductCardTheme = (
       `,
       mediaInner: `
         product-media relative aspect-[4/3] w-full overflow-hidden
-        rounded-[0.85rem] border border-stone-300 bg-[#f8f5ef]
+        rounded-[0.85rem] 
         flex items-center justify-center
       `,
       image: `
-        max-w-[190px] max-h-[78%] object-contain mx-auto block
+        w-full h-full object-contain mx-auto block
       `,
       featuredBadge: `
         absolute top-3 right-3 z-10 w-9 h-9 rounded-full
         flex items-center justify-center text-white
       `,
       categoryBadge: `
-        absolute top-3 left-3 z-10 max-w-[62%] truncate
-        inline-flex items-center justify-center h-7 px-3 rounded-full
-        text-[10px] leading-none font-bold
-        uppercase tracking-[0.10em]
-        bg-white text-stone-700 border border-stone-300
+  absolute top-3 left-3 z-10 max-w-[62%] truncate
+  inline-flex items-center justify-center h-7 px-3 py-0 rounded-full
+  text-[10px] leading-none font-bold
+  uppercase tracking-[0.10em]
+  text-white border border-white/20
       `,
       stockBadge: `
         inline-flex items-center gap-1 rounded-full h-7 px-3
@@ -155,23 +155,23 @@ export const getProductCardTheme = (
     `,
     mediaInner: `
       product-media relative aspect-[4/3] w-full overflow-hidden
-      rounded-[1.1rem] border border-slate-200 bg-slate-50
+      rounded-[1.1rem]
       flex items-center justify-center
     `,
     image: `
-      relative z-[2]
-      max-w-[190px] max-h-[78%] object-contain mx-auto block
+  relative z-[2]
+  w-full h-full object-contain mx-auto block
     `,
     featuredBadge: `
       absolute top-3 right-3 z-10 w-8 h-8 rounded-full
       flex items-center justify-center text-white
     `,
     categoryBadge: `
-      absolute top-3 left-3 z-10 max-w-[62%] truncate
-      inline-flex items-center justify-center h-7 px-3 rounded-full
-      text-[10px] leading-none font-bold
-      uppercase tracking-[0.08em]
-      bg-white text-slate-700 border border-slate-200
+absolute top-3 left-3 z-10 max-w-[62%] truncate
+  inline-flex items-center justify-center h-7 px-3 py-0 rounded-full
+  text-[10px] leading-none font-bold
+  uppercase tracking-[0.08em]
+  text-white border border-white/20
     `,
     stockBadge: `
       inline-flex items-center gap-1 rounded-full h-7 px-3
@@ -258,6 +258,10 @@ export const getProductCardInlineStyles = (
     border: '1px solid #cbd5e1',
   };
 
+  const categoryBadgeStyle = {
+    background: primaryColor || '#00000011',
+  };
+
   const minimalistHeroStyle = undefined;
   const minimalistOrbStyle = undefined;
 
@@ -269,6 +273,7 @@ export const getProductCardInlineStyles = (
     actionStyle,
     minimalistHeroStyle,
     minimalistOrbStyle,
+    categoryBadgeStyle
   };
 };
 
