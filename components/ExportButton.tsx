@@ -37,7 +37,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   }): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
-    const EXPORT_WIDTH_PX = 794;
+    const EXPORT_WIDTH_PX = 1200;
     const PDF_MARGIN_MM = 10;
     const resolvedQuality = opts?.quality ?? quality;
     const canvasScale = resolvedQuality === "alta" ? 2 : 1.5;
@@ -61,9 +61,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       img.complete && img.naturalWidth > 0
         ? Promise.resolve()
         : new Promise<void>((res) => {
-            img.onload = () => res();
-            img.onerror = () => res();
-          });
+          img.onload = () => res();
+          img.onerror = () => res();
+        });
 
     // ── getPos: traversal por offsetParent DENTRO del iframe ─────────────
     // getBoundingClientRect() devuelve coords relativas al viewport del
@@ -161,8 +161,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         productsGrid.style.cssText += `
         display:grid !important;
         grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        column-gap:18px !important;
-        row-gap:24px !important;
+        column-gap:24px !important;
+        row-gap:32px !important;
         align-items:start !important;
         width:100% !important;
         box-sizing:border-box !important;
@@ -170,16 +170,27 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       }
 
       (
-        Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[]
-      ).forEach((card) => {
-        card.style.cssText += `
-        break-inside:avoid !important;
-        page-break-inside:avoid !important;
-        box-sizing:border-box !important;
-        width:100% !important;
-        max-width:100% !important;
-        margin:0 !important;
-      `;
+        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
+      ).forEach((media) => {
+        media.style.aspectRatio = "unset";
+        media.style.height = "500px";
+        media.style.minHeight = "500px";
+        media.style.maxHeight = "500px";
+      });
+
+      // Agrandar título y descripción en PDF
+      (
+        Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]
+      ).forEach((el) => {
+        el.style.fontSize = "28px";
+        el.style.lineHeight = "1.2";
+      });
+
+      (
+        Array.from(clone.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]
+      ).forEach((el) => {
+        el.style.fontSize = "18px";
+        el.style.lineHeight = "1.6";
       });
 
       const imgs = Array.from(
@@ -226,11 +237,22 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       );
 
       imgs.forEach((img) => {
+        img.style.width = "auto";
         img.style.height = "auto";
+        img.style.maxWidth = "100%";
+        img.style.maxHeight = "100%";
         img.style.objectFit = "contain";
         img.style.objectPosition = "center";
         img.style.display = "block";
         img.style.margin = "0 auto";
+      });
+
+      (
+        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
+      ).forEach((media) => {
+        media.style.aspectRatio = "4 / 3.5";
+        media.style.minHeight = "230px";
+        media.style.maxHeight = "280px";
       });
 
       // Esperar reflow completo del iframe
@@ -238,12 +260,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       if ("fonts" in iDoc) {
         try {
           await (iDoc as any).fonts.ready;
-        } catch {}
+        } catch { }
       }
       if (iframe.contentWindow && "fonts" in iframe.contentWindow) {
         try {
           await (iframe.contentWindow as any).fonts.ready;
-        } catch {}
+        } catch { }
       }
       await waitFrames(6);
 

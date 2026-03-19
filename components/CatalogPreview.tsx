@@ -175,27 +175,57 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             opacity: 1 !important;
           }
 
-          .pdf-mode .product-media img {
-            max-width: 82% !important;
-            max-height: 82% !important;
-            width: auto !important;
-            height: auto !important;
-          }
+        .pdf-mode .product-media img {
+          max-width: 100% !important;
+          max-height: 100% !important;
+          width: auto !important;
+          height: auto !important;
+          object-fit: contain !important;
+          object-position: center !important;
+          display: block !important;
+          margin: 0 auto !important;
+        }
 
-          .pdf-mode img {
-            max-width: 85% !important;
-            max-height: 85% !important;
-            width: auto !important;
-            height: auto !important;
-            object-fit: contain !important;
-            object-position: center !important;
-            display: block !important;
-          }
+        .pdf-mode img {
+          max-width: 100% !important;
+          max-height: 100% !important;
+          width: auto !important;
+          height: auto !important;
+          object-fit: contain !important;
+          object-position: center !important;
+          display: block !important;
+          margin: 0 auto !important;
+        }
+
+        .pdf-mode .product-pdf img {
+          max-width: 100% !important;
+          max-height: 100% !important;
+          width: auto !important;
+          height: auto !important;
+          object-fit: contain !important;
+          object-position: center !important;
+          display: block !important;
+          margin: 0 auto !important;
+        }
+
+      .pdf-mode .product-media {
+        aspect-ratio: unset !important;
+        height: 500px !important;
+        min-height: 500px !important;
+        max-height: 500px !important;
+      }
 
           .pdf-mode .product-pdf h3 {
-            font-size: 16px !important;
+            font-size: 24px !important;
             line-height: 1.15 !important;
           }
+
+          .pdf-mode .product-pdf .catalog-html,
+        .pdf-mode .product-pdf [class*="description"] {
+          font-size: 18px !important;
+          line-height: 1.6 !important;
+          margin-top: 6px !important;
+        }
 
           .pdf-mode a[data-pdf-link="product"] {
             pointer-events: none !important;
