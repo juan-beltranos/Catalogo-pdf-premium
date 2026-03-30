@@ -216,7 +216,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
     setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
+    }, 150);
   };
 
   const handleSave = async () => {
