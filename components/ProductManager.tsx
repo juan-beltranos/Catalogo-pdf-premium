@@ -1,11 +1,21 @@
-import React, { useMemo, useState } from 'react';
-import { Product } from '../types';
-import { Plus, Trash2, Package, Image as ImageIcon, Edit2, X, Check, Tag, GripVertical } from 'lucide-react';
-import { compressImage, formatCurrency } from '../constants';
-import { motion, AnimatePresence } from 'framer-motion';
-import { RichTextEditor } from './RichTextEditor';
-import { getImageUrl } from '@/helper/imageDB';
-import { ProductThumb } from './ProductThumb';
+import React, { useMemo, useState } from "react";
+import { Product } from "../types";
+import {
+  Plus,
+  Trash2,
+  Package,
+  Image as ImageIcon,
+  Edit2,
+  X,
+  Check,
+  Tag,
+  GripVertical,
+} from "lucide-react";
+import { compressImage, formatCurrency } from "../constants";
+import { motion, AnimatePresence } from "framer-motion";
+import { RichTextEditor } from "./RichTextEditor";
+import { getImageUrl } from "@/helper/imageDB";
+import { ProductThumb } from "./ProductThumb";
 import {
   DndContext,
   closestCenter,
@@ -82,27 +92,27 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    description: '',
-    quantity: '',
-    image: '',
-    imageId: '',
-    category: '', // NUEVO
+    name: "",
+    price: "",
+    description: "",
+    quantity: "",
+    image: "",
+    imageId: "",
+    category: "", // NUEVO
     featured: false,
     hidden: false,
   });
 
-  const [imagePreview, setImagePreview] = useState<string>('');
-
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const formRef = React.useRef<HTMLDivElement>(null);
   const [categoryMode, setCategoryMode] = useState<"select" | "new">("select");
   const [newCategory, setNewCategory] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>('__ALL__');
+  const [categoryFilter, setCategoryFilter] = useState<string>("__ALL__");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
-    })
+    }),
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -135,8 +145,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    if (categoryFilter === '__ALL__') return products;
-    return products.filter((p) => (p.category || '').trim() === categoryFilter);
+    if (categoryFilter === "__ALL__") return products;
+    return products.filter((p) => (p.category || "").trim() === categoryFilter);
   }, [products, categoryFilter]);
 
   const orderedProducts = useMemo(() => {
@@ -152,25 +162,36 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   }, [filteredProducts]);
 
   const resetForm = () => {
-    setFormData({ name: '', price: '', quantity: '', description: '', image: '', imageId: '', category: '', featured: false, hidden: false });
+    setFormData({
+      name: "",
+      price: "",
+      quantity: "",
+      description: "",
+      image: "",
+      imageId: "",
+      category: "",
+      featured: false,
+      hidden: false,
+    });
     setCategoryMode("select");
     setNewCategory("");
     setIsAdding(false);
     setEditingId(null);
-    setImagePreview('');
+    setImagePreview("");
   };
 
   const handleOpenEdit = async (product: Product) => {
     setFormData({
       name: product.name,
       price: product.price.toString(),
-      quantity: product.quantity === undefined || product.quantity === null
-        ? ''
-        : String(product.quantity),
+      quantity:
+        product.quantity === undefined || product.quantity === null
+          ? ""
+          : String(product.quantity),
       description: product.description,
-      image: product.image || '',
-      imageId: product.imageId || '',
-      category: (product.category || '').trim(),
+      image: product.image || "",
+      imageId: product.imageId || "",
+      category: (product.category || "").trim(),
       featured: !!product.featured,
       hidden: !!product.hidden,
     });
@@ -188,10 +209,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
     if (product.imageId) {
       const url = await getImageUrl(product.imageId);
-      setImagePreview(url || '');
+      setImagePreview(url || "");
     } else {
-      setImagePreview('');
+      setImagePreview("");
     }
+
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   };
 
   const handleSave = async () => {
@@ -206,7 +231,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       name: formData.name,
       price: parseFloat(formData.price) || 0,
       quantity:
-        formData.quantity.trim() === ''
+        formData.quantity.trim() === ""
           ? undefined
           : Math.max(0, parseInt(formData.quantity, 10) || 0),
       description: formData.description,
@@ -244,10 +269,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
     try {
       const base64 = await compressImage(file);
-      setFormData((prev) => ({ ...prev, image: base64, imageId: '' }));
+      setFormData((prev) => ({ ...prev, image: base64, imageId: "" }));
       setImagePreview(base64);
     } catch (err) {
-      console.error('Error processing product image', err);
+      console.error("Error processing product image", err);
     }
   };
 
@@ -286,7 +311,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     name?: string;
     price?: number | string;
     description?: string;
-    image?: string;      // URL
+    image?: string; // URL
     imageId?: string;
     category?: string;
     quantity?: number;
@@ -321,17 +346,27 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         : [];
 
     if (!items.length) {
-      alert("No encontré productos. El JSON debe ser un array o tener { products: [] }");
+      alert(
+        "No encontré productos. El JSON debe ser un array o tener { products: [] }",
+      );
       return;
     }
 
     const baseOrder = products.length;
 
     const sorted = [...items].sort((a, b) => {
-      const an = (a.name ?? "").toString().trim().toLocaleLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const bn = (b.name ?? "").toString().trim().toLocaleLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const an = (a.name ?? "")
+        .toString()
+        .trim()
+        .toLocaleLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      const bn = (b.name ?? "")
+        .toString()
+        .trim()
+        .toLocaleLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
       return an.localeCompare(bn, "es");
     });
 
@@ -356,7 +391,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         price: priceNum,
         quantity: Number.isFinite(it.quantity as any) ? Number(it.quantity) : 0,
         description: normalizeHtml(it.description),
-        image: (it.image ?? "").toString().trim(),   // ✅ URL pública aquí
+        image: (it.image ?? "").toString().trim(), // ✅ URL pública aquí
         imageId: (it.imageId ?? "").toString().trim(),
         category: (it.category ?? "").toString().trim(),
         order: baseOrder + idx,
@@ -373,11 +408,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     importInputRef.current?.click();
   };
 
-
-
   return (
     <div className="space-y-4 mb-24">
-
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xl font-bold flex items-center gap-2">
@@ -438,9 +470,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                   </select>
 
                   <button
-                    disabled={categoryFilter === '__ALL__'}
+                    disabled={categoryFilter === "__ALL__"}
                     onClick={() => {
-                      if (categoryFilter !== '__ALL__') onDownloadPdfByCategory(categoryFilter);
+                      if (categoryFilter !== "__ALL__")
+                        onDownloadPdfByCategory(categoryFilter);
                     }}
                     className="ml-2 bg-blue-600 text-white px-3 py-2 rounded-xl text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Descargar PDF de la categoría seleccionada"
@@ -490,10 +523,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           </select>
         </div>
 
-        {categoryFilter !== '__ALL__' && (
+        {categoryFilter !== "__ALL__" && (
           <button
             className="text-sm text-slate-600 hover:underline"
-            onClick={() => setCategoryFilter('__ALL__')}
+            onClick={() => setCategoryFilter("__ALL__")}
           >
             Limpiar filtro
           </button>
@@ -504,12 +537,15 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       <AnimatePresence>
         {(isAdding || isEditing) && (
           <motion.div
+            ref={formRef}
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             className="bg-white p-6 rounded-2xl shadow-sm border-2 border-blue-500 space-y-4"
           >
-            <h3 className="font-bold text-lg text-blue-900">{isEditing ? 'Editar Producto' : 'Nuevo Producto'}</h3>
+            <h3 className="font-bold text-lg text-blue-900">
+              {isEditing ? "Editar Producto" : "Nuevo Producto"}
+            </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-4">
@@ -517,13 +553,17 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                   type="text"
                   placeholder="Nombre del producto"
                   value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, name: e.target.value }))
+                  }
                   className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
                 />
 
                 {/* Categoría */}
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">Categoría</label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Categoría
+                  </label>
 
                   <div className="flex gap-2">
                     {categoryMode === "select" ? (
@@ -531,7 +571,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                         <select
                           className="flex-1 px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                           value={formData.category}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              category: e.target.value,
+                            }))
+                          }
                         >
                           <option value="">Sin categoría</option>
                           {categories.map((c) => (
@@ -583,14 +628,20 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                   </p>
                 </div>
 
-
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    $
+                  </span>
                   <input
                     type="number"
                     placeholder="Precio"
                     value={formData.price}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        price: e.target.value,
+                      }))
+                    }
                     className="w-full pl-8 pr-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -603,7 +654,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     placeholder="Stock disponible"
                     value={formData.quantity}
                     onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, quantity: e.target.value }))
+                      setFormData((prev) => ({
+                        ...prev,
+                        quantity: e.target.value,
+                      }))
                     }
                     className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -615,11 +669,17 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     type="checkbox"
                     checked={!!formData.featured}
                     onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, featured: e.target.checked }))
+                      setFormData((prev) => ({
+                        ...prev,
+                        featured: e.target.checked,
+                      }))
                     }
                     className="w-4 h-4 text-blue-600"
                   />
-                  <label htmlFor="featured" className="text-sm text-slate-700 font-medium">
+                  <label
+                    htmlFor="featured"
+                    className="text-sm text-slate-700 font-medium"
+                  >
                     Marcar como destacado ⭐
                   </label>
                 </div>
@@ -630,19 +690,26 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     type="checkbox"
                     checked={!!formData.hidden}
                     onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, hidden: e.target.checked }))
+                      setFormData((prev) => ({
+                        ...prev,
+                        hidden: e.target.checked,
+                      }))
                     }
                     className="w-4 h-4 text-red-600"
                   />
-                  <label htmlFor="hidden" className="text-sm text-slate-700 font-medium">
+                  <label
+                    htmlFor="hidden"
+                    className="text-sm text-slate-700 font-medium"
+                  >
                     Ocultar producto 👁️‍🗨️
                   </label>
                 </div>
 
-
                 <RichTextEditor
                   value={formData.description}
-                  onChange={(html) => setFormData((prev) => ({ ...prev, description: html }))}
+                  onChange={(html) =>
+                    setFormData((prev) => ({ ...prev, description: html }))
+                  }
                   placeholder="Descripción (opcional)"
                 />
               </div>
@@ -651,11 +718,19 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
               <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl p-4 hover:border-blue-400 transition-colors cursor-pointer relative bg-slate-50 min-h-[200px]">
                 {imagePreview ? (
                   <div className="relative w-full h-full flex flex-col items-center">
-                    <img src={imagePreview} alt="Preview" className="w-full h-40 object-contain rounded-lg mb-2" />
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-full h-40 object-contain rounded-lg mb-2"
+                    />
                     <button
                       onClick={() => {
-                        setFormData((prev) => ({ ...prev, image: '', imageId: '' }));
-                        setImagePreview('');
+                        setFormData((prev) => ({
+                          ...prev,
+                          image: "",
+                          imageId: "",
+                        }));
+                        setImagePreview("");
                       }}
                       className="text-xs text-red-500 hover:underline"
                     >
@@ -665,8 +740,15 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                 ) : (
                   <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer">
                     <ImageIcon className="w-10 h-10 text-slate-300 mb-2" />
-                    <span className="text-sm text-slate-500">Añadir foto del producto</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                    <span className="text-sm text-slate-500">
+                      Añadir foto del producto
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageChange}
+                    />
                   </label>
                 )}
               </div>
@@ -677,8 +759,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
               disabled={!formData.name || !formData.price}
               className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
             >
-              {isEditing ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-              {isEditing ? 'Guardar Cambios' : 'Crear Producto'}
+              {isEditing ? (
+                <Check className="w-5 h-5" />
+              ) : (
+                <Plus className="w-5 h-5" />
+              )}
+              {isEditing ? "Guardar Cambios" : "Crear Producto"}
             </button>
           </motion.div>
         )}
@@ -695,10 +781,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           strategy={rectSortingStrategy}
         >
           <p className="text-xs text-slate-400 mb-2">
-            Arrastra el ícono <span className="font-semibold">☰</span> para ordenar los productos.
+            Arrastra el ícono <span className="font-semibold">☰</span> para
+            ordenar los productos.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-[90%] sm:w-full mx-auto">
-
             <AnimatePresence>
               {orderedProducts.map((product) => (
                 <SortableCard key={product.id} id={product.id}>
@@ -709,10 +795,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.9 }}
-                      className={`bg-white rounded-2xl p-4  ${product.hidden ? "opacity-40 grayscale" : ""} shadow-sm border group relative transition-all ${editingId === product.id
-                        ? "border-blue-500 ring-2 ring-blue-50"
-                        : "border-slate-100"
-                        }`}
+                      className={`bg-white rounded-2xl p-4  ${product.hidden ? "opacity-40 grayscale" : ""} shadow-sm border group relative transition-all ${
+                        editingId === product.id
+                          ? "border-blue-500 ring-2 ring-blue-50"
+                          : "border-slate-100"
+                      }`}
                     >
                       {/* 🔹 BOTÓN PARA ARRASTRAR */}
                       <button
@@ -752,21 +839,22 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       {/* 🔹 CONTENIDO */}
                       <div className="flex gap-4 items-center">
                         <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 relative">
-
                           {product.hidden && (
                             <div className="absolute top-2 left-2 text-[11px] bg-slate-700 text-white px-2 py-1 rounded-full">
                               Oculto
                             </div>
                           )}
 
-                          {(product.image || product.imageId) ? (
+                          {product.image || product.imageId ? (
                             <ProductThumb
                               product={product}
                               className="max-w-full max-h-full object-contain block"
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300">
-                              <span className="text-[10px] font-bold text-center leading-tight px-1">Sin foto</span>
+                              <span className="text-[10px] font-bold text-center leading-tight px-1">
+                                Sin foto
+                              </span>
                             </div>
                           )}
 
@@ -791,7 +879,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           {product.category?.trim() ? (
                             <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-600 bg-slate-100 px-2 py-1 rounded-full">
                               <Tag className="w-3 h-3" />
-                              <span className="truncate">{product.category}</span>
+                              <span className="truncate">
+                                {product.category}
+                              </span>
                             </div>
                           ) : (
                             <div className="mt-1 text-[11px] text-slate-400">
@@ -804,7 +894,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           </p>
 
                           <p className="text-xs text-slate-500 mt-1">
-                            Cantidad: <span className="font-semibold">{product.quantity ?? 0}</span>
+                            Cantidad:{" "}
+                            <span className="font-semibold">
+                              {product.quantity ?? 0}
+                            </span>
                           </p>
 
                           <div
@@ -816,7 +909,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           />
                         </div>
                       </div>
-
                     </motion.div>
                   )}
                 </SortableCard>
@@ -836,7 +928,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           </div>
         </SortableContext>
       </DndContext>
-
     </div>
   );
 };
