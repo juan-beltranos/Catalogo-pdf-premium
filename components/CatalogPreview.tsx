@@ -112,7 +112,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             }
           }
 
-          .catalog-html p { margin: 0.25rem 0; font-size: 15px; }
+          .catalog-html p { margin: 0.25rem 0; font-size: 13px; }
           .catalog-html strong { font-weight: 700; }
           .catalog-html em { font-style: italic; }
 
@@ -134,7 +134,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             width: 100%;
             border-collapse: collapse;
             margin-top: 0.5rem;
-            font-size: 11px;
+            font-size: 13px;
           }
 
           .catalog-html th,
@@ -150,7 +150,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             color: white;
             font-weight: 700;
             text-transform: uppercase;
-            font-size: 10px;
+            font-size: 12px;
           }
 
           .catalog-html tr:nth-child(even) td {
@@ -175,6 +175,21 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             opacity: 1 !important;
           }
 
+        .pdf-mode [data-price-inline="true"] {
+          font-size: 26px !important;
+        }
+
+        .pdf-mode [data-stock-badge="true"] {
+          font-size: 20px !important;
+        }
+
+        .pdf-mode .product-pdf h3 {
+          font-size: 34px !important;
+        }
+
+        .pdf-mode .product-pdf .catalog-html {
+          font-size: 24px !important;
+        }
         .pdf-mode .product-media img {
           max-width: 100% !important;
           max-height: 100% !important;
@@ -222,7 +237,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
           .pdf-mode .product-pdf .catalog-html,
         .pdf-mode .product-pdf [class*="description"] {
-          font-size: 18px !important;
+          font-size: 20px !important;
           line-height: 1.6 !important;
           margin-top: 6px !important;
         }

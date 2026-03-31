@@ -64,7 +64,7 @@ export const getProductCardTheme = (
         relative px-5 pb-5 pt-5
       `,
       title: `
-        text-[22px] leading-[1.02] font-extrabold tracking-[-0.04em] text-slate-900
+        text-[20px] leading-[1.02] font-extrabold tracking-[-0.04em] text-slate-900
       `,
       description: `
         mt-3 text-[14px] leading-5 text-slate-500
