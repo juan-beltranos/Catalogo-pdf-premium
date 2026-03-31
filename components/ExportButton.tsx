@@ -65,11 +65,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           img.onerror = () => res();
         });
 
-    // ── getPos: traversal por offsetParent DENTRO del iframe ─────────────
-    // getBoundingClientRect() devuelve coords relativas al viewport del
-    // documento HOST (el móvil), no al iframe → posiciones incorrectas.
-    // offsetTop/offsetLeft traversal es relativo al árbol DOM del iframe
-    // y siempre da coordenadas correctas dentro del clone.
     const getPos = (el: HTMLElement, stop: HTMLElement) => {
       let top = 0;
       let left = 0;
@@ -331,6 +326,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
         el_.style.height = "30px";
+        el_.style.fontSize = "18px";
         const span = el_.querySelector("span");
         if (span) {
           span.style.display = "flex";
@@ -343,6 +339,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           span.style.height = "100%";
           span.style.position = "static";
           span.style.transform = "none";
+          span.style.fontSize = "18px";
         }
       });
 

@@ -98,6 +98,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [categoryMode, setCategoryMode] = useState<"select" | "new">("select");
   const [newCategory, setNewCategory] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>('__ALL__');
+  const [isRenamingCategory, setIsRenamingCategory] = useState(false);
+  const [renameCategoryValue, setRenameCategoryValue] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -373,6 +375,67 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     importInputRef.current?.click();
   };
 
+  const handleRenameCategory = () => {
+    const oldName = (formData.category || "").trim();
+    const newName = renameCategoryValue.trim();
+
+    if (!oldName || !newName) return;
+    if (oldName.toLowerCase() === newName.toLowerCase()) {
+      setIsRenamingCategory(false);
+      setRenameCategoryValue("");
+      return;
+    }
+
+    const exists = categories.some(
+      (c) =>
+        c.trim().toLowerCase() === newName.toLowerCase() &&
+        c.trim().toLowerCase() !== oldName.toLowerCase()
+    );
+
+    if (exists) {
+      alert("Ya existe una categoría con ese nombre.");
+      return;
+    }
+
+    products.forEach((p) => {
+      if ((p.category || "").trim().toLowerCase() === oldName.toLowerCase()) {
+        onUpdate(p.id, { category: newName });
+      }
+    });
+
+    setFormData((prev) => ({ ...prev, category: newName }));
+    if (categoryFilter.trim().toLowerCase() === oldName.toLowerCase()) {
+      setCategoryFilter(newName);
+    }
+
+    setIsRenamingCategory(false);
+    setRenameCategoryValue("");
+  };
+
+  const handleDeleteCurrentCategory = () => {
+    const currentCategory = (formData.category || "").trim();
+    if (!currentCategory) return;
+
+    const confirmed = window.confirm(
+      `¿Eliminar la categoría "${currentCategory}"?\n\nLos productos no se borrarán. Solo quedarán sin categoría.`
+    );
+
+    if (!confirmed) return;
+
+    products.forEach((p) => {
+      if ((p.category || "").trim().toLowerCase() === currentCategory.toLowerCase()) {
+        onUpdate(p.id, { category: "" });
+      }
+    });
+
+    if (categoryFilter.trim().toLowerCase() === currentCategory.toLowerCase()) {
+      setCategoryFilter("__ALL__");
+    }
+
+    setFormData((prev) => ({ ...prev, category: "" }));
+    setIsRenamingCategory(false);
+    setRenameCategoryValue("");
+  };
 
 
   return (
@@ -525,13 +588,17 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600">Categoría</label>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {categoryMode === "select" ? (
                       <>
                         <select
-                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          className="flex-1 min-w-[220px] px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                           value={formData.category}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
+                          onChange={(e) => {
+                            setFormData((prev) => ({ ...prev, category: e.target.value }));
+                            setIsRenamingCategory(false);
+                            setRenameCategoryValue("");
+                          }}
                         >
                           <option value="">Sin categoría</option>
                           {categories.map((c) => (
@@ -546,12 +613,37 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           onClick={() => {
                             setCategoryMode("new");
                             setNewCategory("");
-                            setFormData((prev) => ({ ...prev, category: "" })); // opcional
+                            setIsRenamingCategory(false);
+                            setRenameCategoryValue("");
+                            setFormData((prev) => ({ ...prev, category: "" }));
                           }}
                           className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm hover:bg-slate-50"
                         >
                           + Nueva
                         </button>
+
+                        {!!formData.category.trim() && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsRenamingCategory((prev) => !prev);
+                                setRenameCategoryValue((formData.category || "").trim());
+                              }}
+                              className="px-4 py-2 rounded-xl border border-amber-200 bg-amber-50 text-sm hover:bg-amber-100"
+                            >
+                              Renombrar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleDeleteCurrentCategory}
+                              className="px-4 py-2 rounded-xl border border-red-200 bg-red-50 text-sm text-red-600 hover:bg-red-100"
+                            >
+                              Eliminar
+                            </button>
+                          </>
+                        )}
                       </>
                     ) : (
                       <>
@@ -578,8 +670,40 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     )}
                   </div>
 
+                  {categoryMode === "select" && isRenamingCategory && !!formData.category.trim() && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      <input
+                        type="text"
+                        value={renameCategoryValue}
+                        onChange={(e) => setRenameCategoryValue(e.target.value)}
+                        placeholder="Nuevo nombre de categoría"
+                        className="flex-1 min-w-[220px] px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleRenameCategory}
+                        disabled={!renameCategoryValue.trim()}
+                        className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        Guardar nombre
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRenamingCategory(false);
+                          setRenameCategoryValue("");
+                        }}
+                        className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm hover:bg-slate-50"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+
                   <p className="text-[11px] text-slate-400">
-                    Selecciona una categoría existente o crea una nueva.
+                    Selecciona una categoría existente, crea una nueva, o renombra/elimina la seleccionada.
                   </p>
                 </div>
 
