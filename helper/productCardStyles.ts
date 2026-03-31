@@ -67,7 +67,7 @@ export const getProductCardTheme = (
         text-[22px] leading-[1.02] font-extrabold tracking-[-0.04em] text-slate-900
       `,
       description: `
-        mt-3 text-[12px] leading-5 text-slate-500
+        mt-3 text-[14px] leading-5 text-slate-500
       `,
       actionHintWrap: `
         mt-4 flex items-center justify-center
@@ -128,7 +128,7 @@ export const getProductCardTheme = (
         text-[20px] leading-[1.15] font-bold font-serif tracking-[0.01em] text-stone-900
       `,
       description: `
-        mt-3 text-[12px] leading-5 text-stone-500
+        mt-3 text-[14px] leading-5 text-stone-500
       `,
       actionHintWrap: `
         mt-4 flex items-center justify-center
@@ -190,7 +190,7 @@ absolute top-3 left-3 z-10 max-w-[62%] truncate
       tracking-[-0.02em] text-slate-900
     `,
     description: `
-      mt-2 text-[11px] leading-[1.5] text-slate-500
+      mt-2 text-[14px] leading-[1.5] text-slate-500
     `,
     actionHintWrap: `
       mt-4 flex items-center justify-center

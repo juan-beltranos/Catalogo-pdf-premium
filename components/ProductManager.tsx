@@ -108,6 +108,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [categoryMode, setCategoryMode] = useState<"select" | "new">("select");
   const [newCategory, setNewCategory] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>('__ALL__');
+  const [isRenamingCategory, setIsRenamingCategory] = useState(false);
+  const [renameCategoryValue, setRenameCategoryValue] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -408,7 +410,67 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     importInputRef.current?.click();
   };
 
+  const handleRenameCategory = () => {
+    const oldName = (formData.category || "").trim();
+    const newName = renameCategoryValue.trim();
 
+    if (!oldName || !newName) return;
+    if (oldName.toLowerCase() === newName.toLowerCase()) {
+      setIsRenamingCategory(false);
+      setRenameCategoryValue("");
+      return;
+    }
+
+    const exists = categories.some(
+      (c) =>
+        c.trim().toLowerCase() === newName.toLowerCase() &&
+        c.trim().toLowerCase() !== oldName.toLowerCase()
+    );
+
+    if (exists) {
+      alert("Ya existe una categoría con ese nombre.");
+      return;
+    }
+
+    products.forEach((p) => {
+      if ((p.category || "").trim().toLowerCase() === oldName.toLowerCase()) {
+        onUpdate(p.id, { category: newName });
+      }
+    });
+
+    setFormData((prev) => ({ ...prev, category: newName }));
+    if (categoryFilter.trim().toLowerCase() === oldName.toLowerCase()) {
+      setCategoryFilter(newName);
+    }
+
+    setIsRenamingCategory(false);
+    setRenameCategoryValue("");
+  };
+
+  const handleDeleteCurrentCategory = () => {
+    const currentCategory = (formData.category || "").trim();
+    if (!currentCategory) return;
+
+    const confirmed = window.confirm(
+      `¿Eliminar la categoría "${currentCategory}"?\n\nLos productos no se borrarán. Solo quedarán sin categoría.`
+    );
+
+    if (!confirmed) return;
+
+    products.forEach((p) => {
+      if ((p.category || "").trim().toLowerCase() === currentCategory.toLowerCase()) {
+        onUpdate(p.id, { category: "" });
+      }
+    });
+
+    if (categoryFilter.trim().toLowerCase() === currentCategory.toLowerCase()) {
+      setCategoryFilter("__ALL__");
+    }
+
+    setFormData((prev) => ({ ...prev, category: "" }));
+    setIsRenamingCategory(false);
+    setRenameCategoryValue("");
+  };
 
   return (
     <div className="space-y-4 mb-24">
@@ -849,11 +911,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.9 }}
-                      className={`bg-white rounded-2xl p-4  ${product.hidden ? "opacity-40 grayscale" : ""} shadow-sm border group relative transition-all ${
-                        editingId === product.id
-                          ? "border-blue-500 ring-2 ring-blue-50"
-                          : "border-slate-100"
-                      }`}
+                      className={`bg-white rounded-2xl p-4  ${product.hidden ? "opacity-40 grayscale" : ""} shadow-sm border group relative transition-all ${editingId === product.id
+                        ? "border-blue-500 ring-2 ring-blue-50"
+                        : "border-slate-100"
+                        }`}
                     >
                       {/* 🔹 BOTÓN PARA ARRASTRAR */}
                       <button

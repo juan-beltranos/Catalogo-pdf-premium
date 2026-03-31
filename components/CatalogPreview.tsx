@@ -112,7 +112,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             }
           }
 
-          .catalog-html p { margin: 0.25rem 0; }
+          .catalog-html p { margin: 0.25rem 0; font-size: 15px; }
           .catalog-html strong { font-weight: 700; }
           .catalog-html em { font-style: italic; }
 

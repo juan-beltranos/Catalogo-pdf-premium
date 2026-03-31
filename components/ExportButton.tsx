@@ -184,7 +184,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       (
         Array.from(clone.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = "18px";
+        el.style.fontSize = "21px";
         el.style.lineHeight = "1.6";
       });
 
