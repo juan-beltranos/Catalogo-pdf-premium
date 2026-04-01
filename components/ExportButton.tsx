@@ -37,7 +37,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   }): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
-    const EXPORT_WIDTH_PX = 1200;
+    const previewWidth =
+      Math.round(targetRef.current.getBoundingClientRect().width) ||
+      targetRef.current.offsetWidth ||
+      800;
+
+    const EXPORT_WIDTH_PX = 800;
     const PDF_MARGIN_MM = 10;
     const resolvedQuality = opts?.quality ?? quality;
     const canvasScale = resolvedQuality === "alta" ? 2 : 1.5;
@@ -156,37 +161,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         productsGrid.style.cssText += `
         display:grid !important;
         grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        column-gap:24px !important;
-        row-gap:32px !important;
         align-items:start !important;
         width:100% !important;
         box-sizing:border-box !important;
       `;
       }
 
-      (
-        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
-      ).forEach((media) => {
-        media.style.aspectRatio = "unset";
-        media.style.height = "500px";
-        media.style.minHeight = "500px";
-        media.style.maxHeight = "500px";
-      });
-
-      // Agrandar título y descripción en PDF
-      (
-        Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]
-      ).forEach((el) => {
-        el.style.fontSize = "28px";
-        el.style.lineHeight = "1.2";
-      });
-
-      (
-        Array.from(clone.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]
-      ).forEach((el) => {
-        el.style.fontSize = "21px";
-        el.style.lineHeight = "1.6";
-      });
 
       const imgs = Array.from(
         clone.querySelectorAll("img"),
@@ -242,13 +222,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         img.style.margin = "0 auto";
       });
 
-      (
-        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
-      ).forEach((media) => {
-        media.style.aspectRatio = "4 / 3.5";
-        media.style.minHeight = "230px";
-        media.style.maxHeight = "280px";
-      });
+
 
       // Esperar reflow completo del iframe
       await waitFrames(4);

@@ -79,7 +79,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
       <div
         ref={previewRef}
         id="catalog-capture-area"
-        className={`bg-white w-full max-w-[800px] overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
+        className={`bg-white w-full w-[800px] min-w-[800px]overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
           }`}
         style={{
           minHeight: '1120px',
@@ -87,184 +87,131 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
         }}
       >
         <style>{`
-          .product-pdf {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
+  .product-pdf {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 
-          @media print {
-            .product-pdf {
-              break-inside: avoid;
-              page-break-inside: avoid;
-            }
-          }
+  @media print {
+    .product-pdf {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+  }
 
-          @media print {
-            .products-grid {
-              display: block;
-            }
+  @media print {
+    .products-grid {
+      display: block;
+    }
 
-            .product-pdf {
-              width: 48%;
-              display: inline-block;
-              vertical-align: top;
-              margin-bottom: 24px;
-            }
-          }
+    .product-pdf {
+      width: 48%;
+      display: inline-block;
+      vertical-align: top;
+      margin-bottom: 24px;
+    }
+  }
 
-          .catalog-html p { margin: 0.25rem 0; font-size: 13px; }
-          .catalog-html strong { font-weight: 700; }
-          .catalog-html em { font-style: italic; }
+  .catalog-html p { margin: 0.25rem 0; font-size: 13px; }
+  .catalog-html strong { font-weight: 700; }
+  .catalog-html em { font-style: italic; }
 
-          .catalog-html ul {
-            list-style: disc;
-            padding-left: 1.1rem;
-            margin: 0.25rem 0;
-          }
+  .catalog-html ul {
+    list-style: disc;
+    padding-left: 1.1rem;
+    margin: 0.25rem 0;
+  }
 
-          .catalog-html ol {
-            list-style: decimal;
-            padding-left: 1.1rem;
-            margin: 0.25rem 0;
-          }
+  .catalog-html ol {
+    list-style: decimal;
+    padding-left: 1.1rem;
+    margin: 0.25rem 0;
+  }
 
-          .catalog-html li { margin: 0.1rem 0; }
+  .catalog-html li { margin: 0.1rem 0; }
 
-          .catalog-html table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 0.5rem;
-            font-size: 13px;
-          }
+  .catalog-html table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+    font-size: 13px;
+  }
 
-          .catalog-html th,
-          .catalog-html td {
-            border: 1px solid #e5e7eb;
-            padding: 6px 8px;
-            text-align: left;
-            vertical-align: top;
-          }
+  .catalog-html th,
+  .catalog-html td {
+    border: 1px solid #e5e7eb;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
 
-          .catalog-html th {
-            background: var(--brand-color);
-            color: white;
-            font-weight: 700;
-            text-transform: uppercase;
-            font-size: 12px;
-          }
+  .catalog-html th {
+    background: var(--brand-color);
+    color: white;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 12px;
+  }
 
-          .catalog-html tr:nth-child(even) td {
-            background: #f8fafc;
-          }
+  .catalog-html tr:nth-child(even) td {
+    background: #f8fafc;
+  }
 
-          .pdf-mode .products-grid {
-            display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            column-gap: 18px !important;
-            row-gap: 24px !important;
-          }
+  .pdf-mode .products-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 18px !important;
+    row-gap: 24px !important;
+  }
 
-          .pdf-mode .product-pdf {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+  .pdf-mode .product-pdf {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 
-          .pdf-mode [data-price-inline="true"] {
-            display: inline-flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-          }
+  .pdf-mode a[data-pdf-link="product"] {
+    pointer-events: none !important;
+  }
 
-        .pdf-mode [data-price-inline="true"] {
-          font-size: 26px !important;
-        }
+  .pdf-mode img,
+  .pdf-mode .product-pdf img,
+  .pdf-mode .product-media img {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    object-position: center !important;
+    display: block !important;
+    margin: 0 auto !important;
+  }
 
-        .pdf-mode [data-stock-badge="true"] {
-          font-size: 20px !important;
-        }
+  .pdf-mode [data-price-inline="true"],
+  .pdf-mode [data-category-badge="true"] {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: top !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+  }
 
-        .pdf-mode .product-pdf h3 {
-          font-size: 34px !important;
-        }
+  .pdf-mode [data-price-inline="true"] > span,
+  .pdf-mode [data-category-badge="true"] > span {
+    display: block !important;
+    line-height: 1 !important;
+  }
 
-        .pdf-mode .product-pdf .catalog-html {
-          font-size: 24px !important;
-        }
-        .pdf-mode .product-media img {
-          max-width: 100% !important;
-          max-height: 100% !important;
-          width: auto !important;
-          height: auto !important;
-          object-fit: contain !important;
-          object-position: center !important;
-          display: block !important;
-          margin: 0 auto !important;
-        }
+  /* ajuste leve solo para que el header no se vea más pequeño al exportar */
+  .pdf-mode h1 {
+    font-size: 1.08em !important;
+  }
 
-        .pdf-mode img {
-          max-width: 100% !important;
-          max-height: 100% !important;
-          width: auto !important;
-          height: auto !important;
-          object-fit: contain !important;
-          object-position: center !important;
-          display: block !important;
-          margin: 0 auto !important;
-        }
-
-        .pdf-mode .product-pdf img {
-          max-width: 100% !important;
-          max-height: 100% !important;
-          width: auto !important;
-          height: auto !important;
-          object-fit: contain !important;
-          object-position: center !important;
-          display: block !important;
-          margin: 0 auto !important;
-        }
-
-      .pdf-mode .product-media {
-        aspect-ratio: unset !important;
-        height: 500px !important;
-        min-height: 500px !important;
-        max-height: 500px !important;
-      }
-
-          .pdf-mode .product-pdf h3 {
-            font-size: 24px !important;
-            line-height: 1.15 !important;
-          }
-
-          .pdf-mode .product-pdf .catalog-html,
-        .pdf-mode .product-pdf [class*="description"] {
-          font-size: 20px !important;
-          line-height: 1.6 !important;
-          margin-top: 6px !important;
-        }
-
-          .pdf-mode a[data-pdf-link="product"] {
-            pointer-events: none !important;
-          }
-
-          .pdf-mode [data-price-inline="true"],
-          .pdf-mode [data-category-badge="true"] {
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            vertical-align: top !important;
-            line-height: 1 !important;
-            box-sizing: border-box !important;
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
-            white-space: nowrap !important;
-          }
-
-          .pdf-mode [data-price-inline="true"] > span,
-          .pdf-mode [data-category-badge="true"] > span {
-            display: block !important;
-            line-height: 1 !important;
-          }
-        `}</style>
+  .pdf-mode [data-store-whatsapp="true"] {
+    font-size: 1.04em !important;
+  }
+`}</style>
 
         <div
           className={`px-4 py-6 md:p-10 relative overflow-hidden ${isMinimalist ? 'bg-white text-slate-900 border-b border-slate-100' : 'text-white'
