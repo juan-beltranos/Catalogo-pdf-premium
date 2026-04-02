@@ -11,6 +11,7 @@ export interface Product {
   featured?: boolean;
   hidden?: boolean;
   quantity?: number;
+  originalPrice?: number;
 }
 
 export type TemplateId = 'minimalist' | 'classic' | 'modern';
@@ -26,6 +27,8 @@ export interface StoreInfo {
   templateId: TemplateId;
   showQuantityInPdf?: boolean;
   imageFit?: ImageFit;
+  headerMode?: 'color' | 'image';
+  headerImage?: string;
 }
 
 export type ViewMode = 'editor' | 'preview';

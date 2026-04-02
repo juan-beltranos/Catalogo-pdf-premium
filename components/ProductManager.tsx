@@ -94,11 +94,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [formData, setFormData] = useState({
     name: "",
     price: "",
+    originalPrice: "", // NUEVO: precio anterior
     description: "",
     quantity: "",
     image: "",
     imageId: "",
-    category: "", // NUEVO
+    category: "",
     featured: false,
     hidden: false,
   });
@@ -107,7 +108,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const formRef = React.useRef<HTMLDivElement>(null);
   const [categoryMode, setCategoryMode] = useState<"select" | "new">("select");
   const [newCategory, setNewCategory] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>('__ALL__');
+  const [categoryFilter, setCategoryFilter] = useState<string>("__ALL__");
   const [isRenamingCategory, setIsRenamingCategory] = useState(false);
   const [renameCategoryValue, setRenameCategoryValue] = useState("");
 
@@ -167,6 +168,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setFormData({
       name: "",
       price: "",
+      originalPrice: "",
       quantity: "",
       description: "",
       image: "",
@@ -186,6 +188,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setFormData({
       name: product.name,
       price: product.price.toString(),
+      originalPrice:
+        typeof (product as any).originalPrice === "number" &&
+          (product as any).originalPrice > 0
+          ? String((product as any).originalPrice)
+          : "",
       quantity:
         product.quantity === undefined || product.quantity === null
           ? ""
@@ -221,6 +228,19 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     }, 150);
   };
 
+  const getDiscountPercent = (price: number, originalPrice?: number) => {
+    if (
+      typeof originalPrice !== "number" ||
+      !Number.isFinite(originalPrice) ||
+      originalPrice <= 0 ||
+      originalPrice <= price
+    ) {
+      return null;
+    }
+
+    return Math.round(((originalPrice - price) / originalPrice) * 100);
+  };
+
   const handleSave = async () => {
     if (!formData.name || !formData.price) return;
 
@@ -229,9 +249,19 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         ? newCategory.trim()
         : (formData.category || "").trim();
 
+    const price = parseFloat(formData.price) || 0;
+    const parsedOriginalPrice = parseFloat(formData.originalPrice);
+    const originalPrice =
+      formData.originalPrice.trim() === ""
+        ? undefined
+        : parsedOriginalPrice > price
+          ? parsedOriginalPrice
+          : undefined;
+
     const productData: Partial<Product> = {
       name: formData.name,
-      price: parseFloat(formData.price) || 0,
+      price,
+      originalPrice, // NUEVO
       quantity:
         formData.quantity.trim() === ""
           ? undefined
@@ -242,7 +272,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       category: categoryFinal,
       featured: formData.featured,
       hidden: formData.hidden,
-    };
+    } as Partial<Product>;
 
     if (editingId) {
       onUpdate(editingId, productData);
@@ -251,6 +281,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         id: Date.now().toString(),
         name: productData.name as string,
         price: productData.price as number,
+        originalPrice: productData.originalPrice as number | undefined,
         quantity: (productData.quantity as number) ?? 0,
         description: productData.description as string,
         image: productData.image as string,
@@ -259,7 +290,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         order: products.length,
         featured: !!productData.featured,
         hidden: !!productData.hidden,
-      });
+      } as Product);
     }
 
     resetForm();
@@ -291,10 +322,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           ? crypto.randomUUID()
           : `${Date.now()}-${i}`;
 
+      const price = (i + 1) * 10;
+      const originalPrice = i % 3 === 0 ? price + 10 : undefined;
+
       onAdd({
         id,
         name: `Producto demo ${baseOrder + i + 1}`,
-        price: (i + 1) * 10,
+        price,
+        originalPrice,
         description: `<p>Demo</p>`,
         image: DEMO_IMAGE_URL,
         imageId: "",
@@ -302,7 +337,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         order: baseOrder + i,
         featured: i % 10 === 0,
         hidden: false,
-      });
+      } as Product);
     }
   };
 
@@ -312,8 +347,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     id?: string;
     name?: string;
     price?: number | string;
+    originalPrice?: number | string; // NUEVO
+    oldPrice?: number | string; // opcional por compatibilidad
+    compareAtPrice?: number | string; // opcional por compatibilidad
     description?: string;
-    image?: string; // URL
+    image?: string;
     imageId?: string;
     category?: string;
     quantity?: number;
@@ -323,7 +361,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
   const normalizeHtml = (s: any) => {
     const str = typeof s === "string" ? s : "";
-    // Si viene texto plano, lo envolvemos en <p>...</p> para tu render con dangerouslySetInnerHTML
     if (!str.trim()) return "";
     const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(str);
     return looksLikeHtml ? str : `<p>${str}</p>`;
@@ -340,7 +377,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       return;
     }
 
-    // Soporta: array directo o {products:[...]}
     const items: ImportItem[] = Array.isArray(parsed)
       ? parsed
       : Array.isArray(parsed?.products)
@@ -381,6 +417,21 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           ? it.price
           : Number(String(it.price ?? "").replace(/[^\d.]/g, "")) || 0;
 
+      const importedOriginalRaw =
+        it.originalPrice ?? it.oldPrice ?? it.compareAtPrice;
+
+      const importedOriginalPrice =
+        typeof importedOriginalRaw === "number"
+          ? importedOriginalRaw
+          : Number(String(importedOriginalRaw ?? "").replace(/[^\d.]/g, "")) ||
+          undefined;
+
+      const normalizedOriginalPrice =
+        typeof importedOriginalPrice === "number" &&
+          importedOriginalPrice > priceNum
+          ? importedOriginalPrice
+          : undefined;
+
       const id =
         (it.id && String(it.id)) ||
         (typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -391,18 +442,18 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         id,
         name,
         price: priceNum,
+        originalPrice: normalizedOriginalPrice,
         quantity: Number.isFinite(it.quantity as any) ? Number(it.quantity) : 0,
         description: normalizeHtml(it.description),
-        image: (it.image ?? "").toString().trim(), // ✅ URL pública aquí
+        image: (it.image ?? "").toString().trim(),
         imageId: (it.imageId ?? "").toString().trim(),
         category: (it.category ?? "").toString().trim(),
         order: baseOrder + idx,
         featured: !!it.featured,
         hidden: !!it.hidden,
-      });
+      } as Product);
     });
 
-    // Limpia el input para poder re-importar el mismo archivo si quieres
     if (importInputRef.current) importInputRef.current.value = "";
   };
 
@@ -458,7 +509,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     if (!confirmed) return;
 
     products.forEach((p) => {
-      if ((p.category || "").trim().toLowerCase() === currentCategory.toLowerCase()) {
+      if (
+        (p.category || "").trim().toLowerCase() ===
+        currentCategory.toLowerCase()
+      ) {
         onUpdate(p.id, { category: "" });
       }
     });
@@ -472,6 +526,13 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setRenameCategoryValue("");
   };
 
+  const previewPrice = parseFloat(formData.price) || 0;
+  const previewOriginalPrice = parseFloat(formData.originalPrice);
+  const previewDiscount = getDiscountPercent(
+    previewPrice,
+    formData.originalPrice.trim() === "" ? undefined : previewOriginalPrice
+  );
+
   return (
     <div className="space-y-4 mb-24">
       {/* Header */}
@@ -480,12 +541,15 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <Package className="w-5 h-5 text-blue-600" />
           Tus Productos
         </h2>
-        {/* <button
+
+        {/*
+        <button
           onClick={() => seedProducts(100)}
           className="bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-colors"
         >
           Cargar 100 demo
-        </button> */}
+        </button>
+        */}
 
         {/*
         <input
@@ -507,7 +571,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         */}
 
         <div className="flex items-center gap-2">
-          {/* NUEVO: botones PDF opcionales */}
           {(onDownloadPdfAll || onDownloadPdfByCategory) && (
             <div className="hidden sm:flex items-center gap-2">
               {onDownloadPdfAll && (
@@ -569,7 +632,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         </div>
       </div>
 
-      {/* NUEVO: filtro visible (si no usas los botones PDF arriba) */}
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
           <Tag className="w-4 h-4 text-slate-500" />
@@ -635,7 +697,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                         <select
                           className="flex-1 min-w-[220px] px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                           value={formData.category}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              category: e.target.value,
+                            }))
+                          }
                         >
                           <option value="">Sin categoría</option>
                           {categories.map((c) => (
@@ -665,7 +732,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                               type="button"
                               onClick={() => {
                                 setIsRenamingCategory((prev) => !prev);
-                                setRenameCategoryValue((formData.category || "").trim());
+                                setRenameCategoryValue(
+                                  (formData.category || "").trim()
+                                );
                               }}
                               className="px-4 py-2 rounded-xl border border-amber-200 bg-amber-50 text-sm hover:bg-amber-100"
                             >
@@ -707,50 +776,58 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     )}
                   </div>
 
-                  {categoryMode === "select" && isRenamingCategory && !!formData.category.trim() && (
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      <input
-                        type="text"
-                        value={renameCategoryValue}
-                        onChange={(e) => setRenameCategoryValue(e.target.value)}
-                        placeholder="Nuevo nombre de categoría"
-                        className="flex-1 min-w-[220px] px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
-                      />
+                  {categoryMode === "select" &&
+                    isRenamingCategory &&
+                    !!formData.category.trim() && (
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        <input
+                          type="text"
+                          value={renameCategoryValue}
+                          onChange={(e) =>
+                            setRenameCategoryValue(e.target.value)
+                          }
+                          placeholder="Nuevo nombre de categoría"
+                          className="flex-1 min-w-[220px] px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                        />
 
-                      <button
-                        type="button"
-                        onClick={handleRenameCategory}
-                        disabled={!renameCategoryValue.trim()}
-                        className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm hover:bg-amber-600 disabled:opacity-50"
-                      >
-                        Guardar nombre
-                      </button>
+                        <button
+                          type="button"
+                          onClick={handleRenameCategory}
+                          disabled={!renameCategoryValue.trim()}
+                          className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm hover:bg-amber-600 disabled:opacity-50"
+                        >
+                          Guardar nombre
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsRenamingCategory(false);
-                          setRenameCategoryValue("");
-                        }}
-                        className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm hover:bg-slate-50"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsRenamingCategory(false);
+                            setRenameCategoryValue("");
+                          }}
+                          className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm hover:bg-slate-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
 
                   <p className="text-[11px] text-slate-400">
-                    Selecciona una categoría existente, crea una nueva, o renombra/elimina la seleccionada.
+                    Selecciona una categoría existente, crea una nueva, o
+                    renombra/elimina la seleccionada.
                   </p>
                 </div>
 
+                {/* Precio actual */}
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                     $
                   </span>
                   <input
                     type="number"
-                    placeholder="Precio"
+                    min={0}
+                    step="0.01"
+                    placeholder="Precio actual"
                     value={formData.price}
                     onChange={(e) =>
                       setFormData((prev) => ({
@@ -760,6 +837,55 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     }
                     className="w-full pl-8 pr-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+
+                {/* NUEVO: Precio anterior */}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="Precio anterior (opcional)"
+                      value={formData.originalPrice}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          originalPrice: e.target.value,
+                        }))
+                      }
+                      className="w-full pl-8 pr-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                    {formData.originalPrice.trim() === "" ? (
+                      <span className="text-slate-500">
+                        Puedes dejar este campo vacío si el producto no tiene
+                        descuento.
+                      </span>
+                    ) : previewDiscount !== null ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-slate-500 line-through">
+                          {formatCurrency(previewOriginalPrice)}
+                        </span>
+                        <span className="font-semibold text-blue-600">
+                          {formatCurrency(previewPrice)}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                          -{previewDiscount}%
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-amber-700">
+                        El precio anterior debe ser mayor que el precio actual
+                        para mostrar descuento.
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="relative">
@@ -900,134 +1026,162 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
             Arrastra el ícono <span className="font-semibold">☰</span> para
             ordenar los productos.
           </p>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-[90%] sm:w-full mx-auto">
             <AnimatePresence>
-              {orderedProducts.map((product) => (
-                <SortableCard key={product.id} id={product.id}>
-                  {({ dragListeners, dragAttributes, isDragging }) => (
-                    <motion.div
-                      layout
-                      layoutId={product.id}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      className={`bg-white rounded-2xl p-4  ${product.hidden ? "opacity-40 grayscale" : ""} shadow-sm border group relative transition-all ${editingId === product.id
-                        ? "border-blue-500 ring-2 ring-blue-50"
-                        : "border-slate-100"
-                        }`}
-                    >
-                      {/* 🔹 BOTÓN PARA ARRASTRAR */}
-                      <button
-                        type="button"
-                        title="Arrastra para ordenar"
-                        className={`absolute top-2 left-2 z-10 p-2 rounded-full
-              bg-white/90 backdrop-blur border
-              text-slate-500 hover:text-slate-700 hover:bg-slate-100
-              cursor-grab active:cursor-grabbing
-              transition
-              ${isDragging ? "ring-2 ring-blue-300" : "border-slate-200"}
-            `}
-                        {...dragAttributes}
-                        {...dragListeners}
+              {orderedProducts.map((product) => {
+                const originalPrice =
+                  typeof (product as any).originalPrice === "number"
+                    ? (product as any).originalPrice
+                    : undefined;
+
+                const discount = getDiscountPercent(product.price, originalPrice);
+
+                return (
+                  <SortableCard key={product.id} id={product.id}>
+                    {({ dragListeners, dragAttributes, isDragging }) => (
+                      <motion.div
+                        layout
+                        layoutId={product.id}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className={`bg-white rounded-2xl p-4 ${product.hidden ? "opacity-40 grayscale" : ""
+                          } shadow-sm border group relative transition-all ${editingId === product.id
+                            ? "border-blue-500 ring-2 ring-blue-50"
+                            : "border-slate-100"
+                          }`}
                       >
-                        <GripVertical className="w-4 h-4" />
-                      </button>
-
-                      {/* 🔹 EDITAR / ELIMINAR */}
-                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        {/* BOTÓN PARA ARRASTRAR */}
                         <button
-                          onClick={() => handleOpenEdit(product)}
-                          className="bg-blue-100 text-blue-600 p-2 rounded-full shadow-sm border border-blue-200 hover:bg-blue-200"
-                          title="Editar"
+                          type="button"
+                          title="Arrastra para ordenar"
+                          className={`absolute top-2 left-2 z-10 p-2 rounded-full
+                            bg-white/90 backdrop-blur border
+                            text-slate-500 hover:text-slate-700 hover:bg-slate-100
+                            cursor-grab active:cursor-grabbing
+                            transition
+                            ${isDragging ? "ring-2 ring-blue-300" : "border-slate-200"}`}
+                          {...dragAttributes}
+                          {...dragListeners}
                         >
-                          <Edit2 className="w-4 h-4" />
+                          <GripVertical className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => onRemove(product.id)}
-                          className="bg-red-100 text-red-600 p-2 rounded-full shadow-sm border border-red-200 hover:bg-red-200"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
 
-                      {/* 🔹 CONTENIDO */}
-                      <div className="flex gap-4 items-center">
-                        <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 relative">
-                          {product.hidden && (
-                            <div className="absolute top-2 left-2 text-[11px] bg-slate-700 text-white px-2 py-1 rounded-full">
-                              Oculto
+                        {/* EDITAR / ELIMINAR */}
+                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                          <button
+                            onClick={() => handleOpenEdit(product)}
+                            className="bg-blue-100 text-blue-600 p-2 rounded-full shadow-sm border border-blue-200 hover:bg-blue-200"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => onRemove(product.id)}
+                            className="bg-red-100 text-red-600 p-2 rounded-full shadow-sm border border-red-200 hover:bg-red-200"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Badge descuento */}
+                        {/* {discount !== null && (
+                          <div className="absolute top-3 right-32 z-10 rounded-full bg-green-100 px-2 py-1 text-[11px] font-bold text-green-700 border border-green-200">
+                            -{discount}%
+                          </div>
+                        )} */}
+
+                        {/* CONTENIDO */}
+                        <div className="flex gap-4 items-center">
+                          <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 relative">
+                            {product.hidden && (
+                              <div className="absolute top-2 left-2 text-[11px] bg-slate-700 text-white px-2 py-1 rounded-full">
+                                Oculto
+                              </div>
+                            )}
+
+                            {product.image || product.imageId ? (
+                              <ProductThumb
+                                product={product}
+                                className="max-w-full max-h-full object-contain block"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300">
+                                <span className="text-[10px] font-bold text-center leading-tight px-1">
+                                  Sin foto
+                                </span>
+                              </div>
+                            )}
+
+                            {product.featured && (
+                              <div
+                                title="Producto destacado"
+                                className="absolute top-1 right-1 z-10 flex items-center justify-center
+                                w-4 h-4 rounded-full
+                                bg-yellow-400 text-white
+                                shadow-md ring-2 ring-white"
+                              >
+                                <span className="text-sm leading-none">★</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-slate-900 truncate">
+                              {product.name}
+                            </h3>
+
+                            {product.category?.trim() ? (
+                              <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-600 bg-slate-100 px-2 py-1 rounded-full">
+                                <Tag className="w-3 h-3" />
+                                <span className="truncate">{product.category}</span>
+                              </div>
+                            ) : (
+                              <div className="mt-1 text-[11px] text-slate-400">
+                                Sin categoría
+                              </div>
+                            )}
+
+                            <div className="mt-1">
+                              {discount !== null && originalPrice ? (
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <span className="text-xs text-slate-400 line-through">
+                                    {formatCurrency(originalPrice)}
+                                  </span>
+                                  <p className="text-blue-600 font-semibold">
+                                    {formatCurrency(product.price)}
+                                  </p>
+                                </div>
+                              ) : (
+                                <p className="text-blue-600 font-semibold">
+                                  {formatCurrency(product.price)}
+                                </p>
+                              )}
                             </div>
-                          )}
 
-                          {product.image || product.imageId ? (
-                            <ProductThumb
-                              product={product}
-                              className="max-w-full max-h-full object-contain block"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-slate-50 text-slate-300">
-                              <span className="text-[10px] font-bold text-center leading-tight px-1">
-                                Sin foto
+                            <p className="text-xs text-slate-500 mt-1">
+                              Cantidad:{" "}
+                              <span className="font-semibold">
+                                {product.quantity ?? 0}
                               </span>
-                            </div>
-                          )}
+                            </p>
 
-                          {product.featured && (
                             <div
-                              title="Producto destacado"
-                              className="absolute top-1 right-1 z-10 flex items-center justify-center
-                              w-4 h-4 rounded-full
-                              bg-yellow-400 text-white
-                              shadow-md ring-2 ring-white"
-                            >
-                              <span className="text-sm leading-none">★</span>
-                            </div>
-                          )}
+                              className="text-xs text-slate-500 line-clamp-2 mt-1 prose prose-sm max-w-none"
+                              dangerouslySetInnerHTML={{
+                                __html:
+                                  product.description || "<p>Sin descripción</p>",
+                              }}
+                            />
+                          </div>
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-slate-900 truncate">
-                            {product.name}
-                          </h3>
-
-                          {product.category?.trim() ? (
-                            <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-600 bg-slate-100 px-2 py-1 rounded-full">
-                              <Tag className="w-3 h-3" />
-                              <span className="truncate">
-                                {product.category}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="mt-1 text-[11px] text-slate-400">
-                              Sin categoría
-                            </div>
-                          )}
-
-                          <p className="text-blue-600 font-semibold mt-1">
-                            {formatCurrency(product.price)}
-                          </p>
-
-                          <p className="text-xs text-slate-500 mt-1">
-                            Cantidad:{" "}
-                            <span className="font-semibold">
-                              {product.quantity ?? 0}
-                            </span>
-                          </p>
-
-                          <div
-                            className="text-xs text-slate-500 line-clamp-2 mt-1 prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{
-                              __html:
-                                product.description || "<p>Sin descripción</p>",
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </SortableCard>
-              ))}
+                      </motion.div>
+                    )}
+                  </SortableCard>
+                );
+              })}
             </AnimatePresence>
 
             {orderedProducts.length === 0 && !isAdding && !isEditing && (

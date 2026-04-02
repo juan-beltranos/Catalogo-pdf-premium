@@ -39,6 +39,9 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   const isClassic = templateId === 'classic';
   const isModern = templateId === 'modern';
 
+  const headerMode = storeInfo.headerMode ?? 'color';
+  const hasHeaderImage = headerMode === 'image' && !!storeInfo.headerImage;
+
   const sourceProducts = productsOverride ?? products;
 
   const orderedProducts = useMemo(() => {
@@ -216,8 +219,22 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
         <div
           className={`px-4 py-6 md:p-10 relative overflow-hidden ${isMinimalist ? 'bg-white text-slate-900 border-b border-slate-100' : 'text-white'
             }`}
-          style={!isMinimalist ? { backgroundColor: primaryColor } : {}}
+          style={
+            hasHeaderImage
+              ? {
+                backgroundImage: `url(${storeInfo.headerImage})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+              }
+              : !isMinimalist
+                ? { backgroundColor: primaryColor }
+                : {}
+          }
         >
+          {hasHeaderImage && (
+            <div className="absolute inset-0 bg-black/35 z-0" />
+          )}
           <div
             className={`flex flex-col md:flex-row justify-between items-center gap-6 relative z-10 ${isClassic ? 'text-center md:text-left' : ''
               }`}
@@ -244,7 +261,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   }`}
               >
                 <h1
-                  className={`font-extrabold uppercase tracking-tight ${isMinimalist ? 'text-xl md:text-2xl text-slate-900' : 'text-2xl md:text-4xl'
+                  className={`font-extrabold uppercase tracking-tight ${isMinimalist
+                    ? hasHeaderImage
+                      ? 'text-xl md:text-2xl text-white'
+                      : 'text-xl md:text-2xl text-slate-900'
+                    : 'text-2xl md:text-4xl'
                     } ${isClassic ? 'font-serif tracking-[0.12em]' : ''}`}
                 >
                   {storeInfo.name || 'Mi Catálogo'}
@@ -255,7 +276,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             <div className="flex flex-col items-center md:items-end gap-3">
               {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
                 <div
-                  className={`flex items-center gap-3 ${isMinimalist ? 'text-slate-600' : 'text-white'
+                  className={`flex items-center gap-3 ${isMinimalist
+                      ? hasHeaderImage
+                        ? 'text-white'
+                        : 'text-slate-600'
+                      : 'text-white'
                     }`}
                 >
                   {storeInfo.whatsapp && (
@@ -266,7 +291,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       aria-label="WhatsApp"
                       title="WhatsApp"
                       data-pdf-link="social"
-                      className={`p-2 rounded-full transition-colors ${isMinimalist ? 'hover:bg-slate-100' : 'hover:bg-white/15'
+                      className={`p-2 rounded-full transition-colors ${isMinimalist
+                          ? hasHeaderImage
+                            ? 'hover:bg-white/20'
+                            : 'hover:bg-slate-100'
+                          : 'hover:bg-white/15'
                         }`}
                     >
                       <MessageCircle className="w-5 h-5" />
@@ -281,7 +310,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       rel="noopener noreferrer"
                       aria-label="Facebook"
                       title={facebookLabel(storeInfo.facebook)}
-                      className={`p-2 rounded-full transition-colors ${isMinimalist ? 'hover:bg-slate-100' : 'hover:bg-white/15'
+                      className={`p-2 rounded-full transition-colors ${isMinimalist
+                          ? hasHeaderImage
+                            ? 'hover:bg-white/20'
+                            : 'hover:bg-slate-100'
+                          : 'hover:bg-white/15'
                         }`}
                     >
                       <Facebook className="w-5 h-5" />
@@ -296,7 +329,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       rel="noopener noreferrer"
                       aria-label="Instagram"
                       title={instagramLabel(storeInfo.instagram)}
-                      className={`p-2 rounded-full transition-colors ${isMinimalist ? 'hover:bg-slate-100' : 'hover:bg-white/15'
+                      className={`p-2 rounded-full transition-colors ${isMinimalist
+                          ? hasHeaderImage
+                            ? 'hover:bg-white/20'
+                            : 'hover:bg-slate-100'
+                          : 'hover:bg-white/15'
                         }`}
                     >
                       <Instagram className="w-5 h-5" />
@@ -308,8 +345,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {storeInfo.whatsapp && (
                 <div
                   className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold ${isMinimalist
-                    ? 'bg-slate-100 text-slate-900 border border-slate-200'
-                    : 'bg-white text-slate-900 border border-white/40'
+                      ? hasHeaderImage
+                        ? 'bg-white/90 text-slate-900 border border-white/40'
+                        : 'bg-slate-100 text-slate-900 border border-slate-200'
+                      : 'bg-white text-slate-900 border border-white/40'
                     }`}
                 >
                   <Phone className="w-4 h-4" />
@@ -317,10 +356,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 </div>
               )}
             </div>
+
           </div>
 
-          {!isMinimalist && !isModern && (
-            <div className="absolute -bottom-6 left-0 right-0 h-12 bg-white rounded-t-[3rem]" />
+          {hasHeaderImage && (
+            <div className="absolute inset-0 bg-black/35 z-0" />
           )}
         </div>
 
@@ -407,12 +447,25 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
                   <div className={theme.body}>
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <div
-                        data-price-inline="true"
-                        className={theme.priceInline}
-                        style={inlineTheme.priceStyle}
-                      >
-                        <span>{formatCurrency(product.price)}</span>
+                      <div className="flex flex-col items-start">
+
+                        {(product as any).originalPrice &&
+                          (product as any).originalPrice > product.price && (
+                            <div className="mb-3 leading-none">
+                              <span className="text-xs text-slate-400 block">
+                                Antes: {formatCurrency((product as any).originalPrice)}
+                              </span>
+                            </div>
+                          )}
+
+                        <div
+                          data-price-inline="true"
+                          className={theme.priceInline}
+                          style={inlineTheme.priceStyle}
+                        >
+                          <span>{formatCurrency(product.price)}</span>
+                        </div>
+
                       </div>
 
                       {showQuantityInPdf && (product.quantity ?? 0) > 0 && (

@@ -25,8 +25,8 @@ export const App: React.FC = () => {
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg text-white">
-              <Sparkles className="w-5 h-5" />
+            <div className="bg-white p-2 rounded-lg text-white">
+              <img src="https://www.inteliasb.com/assets/logo-minimalista-CPqnFsHu.png" alt="logo" className='w-[48px] md:w-[45px]' />
             </div>
             <h1 className="font-bold text-lg tracking-tight hidden sm:block">Catálogo Instantáneo</h1>
           </div>

@@ -22,6 +22,18 @@ export const StoreForm: React.FC<StoreFormProps> = ({ storeInfo, onUpdate }) => 
     }
   };
 
+  const handleHeaderImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const base64 = await compressImage(file);
+        onUpdate({ headerImage: base64, headerMode: 'image' });
+      } catch (err) {
+        console.error("Error compressing header image", err);
+      }
+    }
+  };
+
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
       <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
@@ -112,26 +124,74 @@ export const StoreForm: React.FC<StoreFormProps> = ({ storeInfo, onUpdate }) => 
         <div className="grid grid-cols-2 gap-4">
           {/* Color */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Color de Marca
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Fondo del Banner
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={storeInfo.color}
-                onChange={(e) => onUpdate({ color: e.target.value })}
-                className="w-10 h-10 rounded-lg cursor-pointer border-none"
-              />
-              <span className="text-xs text-slate-500 font-mono uppercase">
-                {storeInfo.color}
-              </span>
+
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => onUpdate({ headerMode: 'color' })}
+                className={`px-3 py-2 rounded-lg text-sm border ${(storeInfo.headerMode ?? 'color') === 'color'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-slate-700 border-slate-200'
+                  }`}
+              >
+                Color
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onUpdate({ headerMode: 'image' })}
+                className={`px-3 py-2 rounded-lg text-sm border ${storeInfo.headerMode === 'image'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-slate-700 border-slate-200'
+                  }`}
+              >
+                Imagen
+              </button>
             </div>
+
+            {(storeInfo.headerMode ?? 'color') === 'color' ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={storeInfo.color}
+                  onChange={(e) => onUpdate({ color: e.target.value })}
+                  className="w-10 h-10 rounded-lg cursor-pointer border-none"
+                />
+                <span className="text-xs text-slate-500 font-mono uppercase">
+                  {storeInfo.color}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 p-2 rounded-lg flex items-center gap-2 text-sm text-slate-600">
+                  <ImageIcon className="w-4 h-4" />
+                  Subir banner
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleHeaderImageChange}
+                  />
+                </label>
+
+                {storeInfo.headerImage && (
+                  <img
+                    src={storeInfo.headerImage}
+                    alt="Banner preview"
+                    className="w-16 h-10 object-cover rounded-lg border border-slate-200"
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           {/* Logo */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Logo
+             Tu Logo
             </label>
             <div className="flex items-center gap-2">
               <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 p-2 rounded-lg flex items-center gap-2 text-sm text-slate-600">
