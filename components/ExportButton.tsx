@@ -37,11 +37,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   }): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
-    const previewWidth =
-      Math.round(targetRef.current.getBoundingClientRect().width) ||
-      targetRef.current.offsetWidth ||
-      800;
-
     const EXPORT_WIDTH_PX = 800;
     const PDF_MARGIN_MM = 10;
     const resolvedQuality = opts?.quality ?? quality;
@@ -70,7 +65,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           img.onerror = () => res();
         });
 
-    const getPos = (el: HTMLElement, stop: HTMLElement) => {
+    const getPos = (el: HTMLElement, stop: HTMLElement | null = null) => {
       let top = 0;
       let left = 0;
       let cur: HTMLElement | null = el;
@@ -104,7 +99,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       </head><body style="margin:0;padding:0;background:#fff;width:${EXPORT_WIDTH_PX}px"></body></html>`);
       iDoc.close();
 
-      // Esperar que cada <link> del iframe termine de cargar
       const styleLoadPromises: Promise<void>[] = [];
       Array.from(
         document.querySelectorAll('link[rel="stylesheet"], style'),
@@ -157,16 +151,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const productsGrid = clone.querySelector(
         ".products-grid",
       ) as HTMLElement | null;
-      if (productsGrid) {
-        productsGrid.style.cssText += `
-        display:grid !important;
-        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        align-items:start !important;
-        width:100% !important;
-        box-sizing:border-box !important;
-      `;
-      }
+      if (!productsGrid) throw new Error("No se encontró .products-grid");
 
+      productsGrid.style.cssText += `
+      display:grid !important;
+      grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+      align-items:start !important;
+      width:100% !important;
+      box-sizing:border-box !important;
+    `;
 
       const imgs = Array.from(
         clone.querySelectorAll("img"),
@@ -195,8 +188,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         imgs.map(async (img) => {
           if (img.naturalWidth > 0) return;
           const src = img.getAttribute("src") || "";
-          if (!src || src.startsWith("data:") || src.startsWith("blob:"))
-            return;
+          if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
           try {
             const resp = await fetch(src, { mode: "cors" });
             const blob = await resp.blob();
@@ -222,75 +214,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         img.style.margin = "0 auto";
       });
 
-
-
-      // Esperar reflow completo del iframe
-      await waitFrames(4);
-      if ("fonts" in iDoc) {
-        try {
-          await (iDoc as any).fonts.ready;
-        } catch { }
-      }
-      if (iframe.contentWindow && "fonts" in iframe.contentWindow) {
-        try {
-          await (iframe.contentWindow as any).fonts.ready;
-        } catch { }
-      }
-      await waitFrames(6);
-
-      // Medir fullHeight DESPUÉS del reflow completo
-      const fullHeight = clone.scrollHeight || clone.offsetHeight;
-
-      iframe.style.height = `${fullHeight + 20}px`;
-      await waitFrames(2);
-
-      // Links
-      type LinkArea = {
-        url: string;
-        left: number;
-        top: number;
-        width: number;
-        height: number;
-      };
-      const linkAreasCss: LinkArea[] = [];
-
-      const pushLink = (el: HTMLElement, url: string) => {
-        if (!url || url === "#") return;
-        const pos = getPos(el, clone);
-        if (pos.width <= 0 || pos.height <= 0) return;
-        linkAreasCss.push({ url, ...pos });
-      };
-
-      const waFromDom =
-        clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
-      const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
-
-      (
-        Array.from(
-          clone.querySelectorAll('[data-pdf-link="product"]'),
-        ) as HTMLElement[]
-      ).forEach((el) => {
-        const name = (el.dataset.productName || "").trim();
-        const price = (el.dataset.productPrice || "").trim();
-        if (!name) return;
-        let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
-        if (businessWa) {
-          const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(Number(price || 0))}`;
-          url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
-        }
-        if (url && url !== "#") pushLink(el, url);
-      });
-
-      (
-        Array.from(clone.querySelectorAll("a[href]")) as HTMLAnchorElement[]
-      ).forEach((a) => {
-        const href = (a.getAttribute("href") || "").trim();
-        if (!href || href === "#") return;
-        if (a.matches('[data-pdf-link="product"]')) return;
-        pushLink(a, href);
-      });
-
-      // Fix badge/button alignment para html2canvas
       clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
         const el_ = el as HTMLElement;
         el_.style.display = "flex";
@@ -376,130 +299,222 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
       });
 
-      const iWin = iframe.contentWindow!;
-      const canvas = await html2canvas(clone, {
-        scale: canvasScale,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: "#ffffff",
-        logging: false,
-        width: EXPORT_WIDTH_PX,
-        windowWidth: EXPORT_WIDTH_PX,
-        windowHeight: fullHeight,
-        scrollX: -(iWin.scrollX ?? 0),
-        scrollY: -(iWin.scrollY ?? 0),
-      });
+      await waitFrames(4);
+      if ("fonts" in iDoc) {
+        try {
+          await (iDoc as any).fonts.ready;
+        } catch { }
+      }
+      if (iframe.contentWindow && "fonts" in iframe.contentWindow) {
+        try {
+          await (iframe.contentWindow as any).fonts.ready;
+        } catch { }
+      }
+      await waitFrames(6);
 
-      // ── PDF page-break logic ─────────────────────────────────────────────
+      const fullHeight = clone.scrollHeight || clone.offsetHeight;
+      iframe.style.height = `${fullHeight + 20}px`;
+      await waitFrames(2);
+
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
       const usableWmm = pageW - PDF_MARGIN_MM * 2;
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
-      const pxPerMm = (EXPORT_WIDTH_PX * canvasScale) / usableWmm;
-      const pageHeightPx = Math.floor(usableHmm * pxPerMm);
+      const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
+      const pageBodyHeightCss = usableHmm * cssPxPerMm;
 
-      const domTotalHeight = fullHeight || 1;
-      const scaleY = canvas.height / domTotalHeight;
-
-      // Recolectar cards y sus posiciones AHORA (iframe ya reflowed)
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf"),
       ) as HTMLElement[];
 
-      // ── Construir breakpoints: sólo al INICIO de cada tarjeta ────────────
-      // Cortar ANTES de que empiece una tarjeta garantiza que nunca
-      // se parta a mitad. También añadimos el final de cada tarjeta
-      // como candidato secundario.
-      const bpSet = new Set<number>();
-      bpSet.add(0);
-      bpSet.add(canvas.height);
+      type RowInfo = {
+        top: number;
+        bottom: number;
+        cards: HTMLElement[];
+      };
+
+      const rowsMap = new Map<number, RowInfo>();
+      const ROW_TOLERANCE_PX = 6;
 
       cards.forEach((card) => {
         const pos = getPos(card, clone);
-        // Inicio de la tarjeta (con 4px de margen superior)
-        const cardTopCanvas = Math.max(
-          0,
-          Math.floor(pos.top * scaleY) - 4,
+        const matchedKey = Array.from(rowsMap.keys()).find(
+          (k) => Math.abs(k - pos.top) <= ROW_TOLERANCE_PX,
         );
-        // Final de la tarjeta (con 8px de margen inferior)
-        const cardBotCanvas = Math.min(
-          canvas.height,
-          Math.floor((pos.top + pos.height) * scaleY) + 8,
-        );
-        bpSet.add(cardTopCanvas);
-        bpSet.add(cardBotCanvas);
+
+        if (matchedKey !== undefined) {
+          const row = rowsMap.get(matchedKey)!;
+          row.top = Math.min(row.top, pos.top);
+          row.bottom = Math.max(row.bottom, pos.top + pos.height);
+          row.cards.push(card);
+        } else {
+          rowsMap.set(pos.top, {
+            top: pos.top,
+            bottom: pos.top + pos.height,
+            cards: [card],
+          });
+        }
       });
 
-      const breakpoints = Array.from(bpSet).sort((a, b) => a - b);
+      const rows = Array.from(rowsMap.values())
+        .sort((a, b) => a.top - b.top)
+        .map((row) => ({
+          ...row,
+          cards: row.cards.sort((a, b) => {
+            const pa = getPos(a, clone);
+            const pb = getPos(b, clone);
+            return pa.left - pb.left;
+          }),
+        }));
 
-      // Busca el breakpoint más cercano a `limit` sin pasarlo (y > from)
-      const pickBreak = (from: number, limit: number): number => {
-        let chosen = -1;
-        for (const v of breakpoints) {
-          if (v <= limit && v > from) chosen = v;
-          if (v > limit) break;
+      const contentWrap = productsGrid.parentElement as HTMLElement;
+      if (!contentWrap) throw new Error("No se encontró el contenedor del grid");
+
+      const rootChildren = Array.from(clone.children) as HTMLElement[];
+      const contentIndex = rootChildren.indexOf(contentWrap);
+
+      const fixedBeforeContentHeight = rootChildren
+        .slice(0, contentIndex)
+        .reduce((sum, el) => sum + el.offsetHeight, 0);
+
+      const contentChromeHeight = contentWrap.offsetHeight - productsGrid.offsetHeight;
+
+      const firstPageRowsHeightLimit =
+        pageBodyHeightCss - fixedBeforeContentHeight - contentChromeHeight;
+
+      const nextPageRowsHeightLimit = pageBodyHeightCss - contentChromeHeight;
+
+      if (firstPageRowsHeightLimit <= 80 || nextPageRowsHeightLimit <= 80) {
+        throw new Error("No hay alto suficiente para paginar el catálogo");
+      }
+
+      const pageRowGroups: RowInfo[][] = [];
+      let currentPageRows: RowInfo[] = [];
+      let currentLimit = firstPageRowsHeightLimit;
+      let currentHeight = 0;
+      let currentStartTop = 0;
+
+      rows.forEach((row, index) => {
+        const rowHeight =
+          currentPageRows.length === 0
+            ? row.bottom - row.top
+            : row.bottom - currentStartTop;
+
+        if (currentPageRows.length === 0) {
+          currentPageRows.push(row);
+          currentStartTop = row.top;
+          currentHeight = row.bottom - row.top;
+          return;
         }
-        return chosen;
+
+        if (rowHeight <= currentLimit) {
+          currentPageRows.push(row);
+          currentHeight = row.bottom - currentStartTop;
+        } else {
+          pageRowGroups.push(currentPageRows);
+          currentPageRows = [row];
+          currentLimit = nextPageRowsHeightLimit;
+          currentStartTop = row.top;
+          currentHeight = row.bottom - row.top;
+        }
+
+        if (index === rows.length - 1 && currentPageRows.length) {
+          // noop, se empuja fuera
+        }
+      });
+
+      if (currentPageRows.length) {
+        pageRowGroups.push(currentPageRows);
+      }
+
+      if (pageRowGroups.length === 0) {
+        pageRowGroups.push([]);
+      }
+
+      const waFromDom =
+        clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
+      const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
+
+      type LinkArea = {
+        url: string;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
       };
 
-      let offsetY = 0;
-      let pageIndex = 0;
-      const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
+      const renderPageToPdf = async (
+        pageRoot: HTMLElement,
+        pageIndex: number,
+      ) => {
+        iDoc.body.innerHTML = "";
+        iDoc.body.appendChild(pageRoot);
 
-      while (offsetY < canvas.height) {
-        const idealEnd = offsetY + pageHeightPx;
-        let endY = pickBreak(offsetY, idealEnd);
-
-        if (endY === -1) {
-          // No hay breakpoint antes de idealEnd:
-          // buscar el inicio de la primera tarjeta que se cortaría
-          let breakBefore = -1;
-          for (const card of cards) {
-            const pos = getPos(card, clone);
-            const cardTop = Math.max(0, Math.floor(pos.top * scaleY) - 4);
-            const cardBot = Math.floor((pos.top + pos.height) * scaleY);
-            if (cardTop < idealEnd && cardBot > idealEnd) {
-              // Esta tarjeta se cortaría: romper antes de su inicio
-              const candidate = Math.max(offsetY + 1, cardTop);
-              if (
-                candidate > offsetY &&
-                (breakBefore === -1 || candidate < breakBefore)
-              ) {
-                breakBefore = candidate;
-              }
-            }
-          }
-          endY =
-            breakBefore !== -1
-              ? breakBefore
-              : Math.min(idealEnd, canvas.height);
+        await waitFrames(3);
+        if ("fonts" in iDoc) {
+          try {
+            await (iDoc as any).fonts.ready;
+          } catch { }
         }
+        await waitFrames(3);
 
-        const sliceH = endY - offsetY;
-        if (sliceH <= 0) break;
+        const pageHeight = pageRoot.scrollHeight || pageRoot.offsetHeight;
+        iframe.style.height = `${pageHeight + 20}px`;
+        await waitFrames(2);
 
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceH;
-        const ctx = pageCanvas.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(
-          canvas,
-          0,
-          offsetY,
-          canvas.width,
-          sliceH,
-          0,
-          0,
-          canvas.width,
-          sliceH,
-        );
+        const linkAreasCss: LinkArea[] = [];
+
+        const pushLink = (el: HTMLElement, url: string) => {
+          if (!url || url === "#") return;
+          const pos = getPos(el, pageRoot);
+          if (pos.width <= 0 || pos.height <= 0) return;
+          linkAreasCss.push({ url, ...pos });
+        };
+
+        (
+          Array.from(
+            pageRoot.querySelectorAll('[data-pdf-link="product"]'),
+          ) as HTMLElement[]
+        ).forEach((el) => {
+          const name = (el.dataset.productName || "").trim();
+          const price = (el.dataset.productPrice || "").trim();
+          if (!name) return;
+          let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
+          if (businessWa) {
+            const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(Number(price || 0))}`;
+            url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
+          }
+          if (url && url !== "#") pushLink(el, url);
+        });
+
+        (
+          Array.from(pageRoot.querySelectorAll("a[href]")) as HTMLAnchorElement[]
+        ).forEach((a) => {
+          const href = (a.getAttribute("href") || "").trim();
+          if (!href || href === "#") return;
+          if (a.matches('[data-pdf-link="product"]')) return;
+          pushLink(a, href);
+        });
+
+        const iWin = iframe.contentWindow!;
+        const pageCanvas = await html2canvas(pageRoot, {
+          scale: canvasScale,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: "#ffffff",
+          logging: false,
+          width: EXPORT_WIDTH_PX,
+          windowWidth: EXPORT_WIDTH_PX,
+          windowHeight: pageHeight,
+          scrollX: -(iWin.scrollX ?? 0),
+          scrollY: -(iWin.scrollY ?? 0),
+        });
 
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
-        const sliceHmm = sliceH / pxPerMm;
+        const imgHeightMm = pageCanvas.height / ((EXPORT_WIDTH_PX * canvasScale) / usableWmm);
+
         if (pageIndex > 0) pdf.addPage();
         pdf.addImage(
           imgData,
@@ -507,29 +522,86 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           PDF_MARGIN_MM,
           PDF_MARGIN_MM,
           usableWmm,
-          sliceHmm,
+          imgHeightMm,
           undefined,
           "FAST",
         );
 
-        // Links para esta página
-        const pageStartDom = offsetY / scaleY;
-        const pageEndDom = endY / scaleY;
         for (const la of linkAreasCss) {
-          const visTop = Math.max(la.top, pageStartDom);
-          const visBot = Math.min(la.top + la.height, pageEndDom);
-          if (visBot <= visTop) continue;
           pdf.link(
             PDF_MARGIN_MM + la.left / cssPxPerMm,
-            PDF_MARGIN_MM + (visTop - pageStartDom) / cssPxPerMm,
+            PDF_MARGIN_MM + la.top / cssPxPerMm,
             la.width / cssPxPerMm,
-            (visBot - visTop) / cssPxPerMm,
+            la.height / cssPxPerMm,
             { url: la.url },
           );
         }
+      };
 
-        offsetY = endY;
-        pageIndex++;
+      for (let pageIndex = 0; pageIndex < pageRowGroups.length; pageIndex++) {
+        const pageClone = clone.cloneNode(true) as HTMLElement;
+        pageClone.classList.add("pdf-mode");
+        pageClone.style.width = `${EXPORT_WIDTH_PX}px`;
+        pageClone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
+        pageClone.style.margin = "0";
+        pageClone.style.background = "#ffffff";
+        pageClone.style.boxSizing = "border-box";
+        pageClone.style.transform = "none";
+        pageClone.style.minHeight = "auto";
+        pageClone.style.height = "auto";
+        pageClone.style.overflow = "visible";
+        pageClone.style.position = "relative";
+
+        const pageRootChildren = Array.from(pageClone.children) as HTMLElement[];
+        const pageContentWrap = pageRootChildren[contentIndex] as HTMLElement;
+        const pageGrid = pageClone.querySelector(".products-grid") as HTMLElement | null;
+
+        if (!pageContentWrap || !pageGrid) {
+          throw new Error("No se pudo construir la página del PDF");
+        }
+
+        if (pageIndex > 0) {
+          pageRootChildren.slice(0, contentIndex).forEach((el) => el.remove());
+        }
+
+        const isLastPage = pageIndex === pageRowGroups.length - 1;
+
+        // Quitar footer en todas menos en la última
+        const footerNodes = pageRootChildren.slice(contentIndex + 1);
+        if (!isLastPage) {
+          footerNodes.forEach((el) => el.remove());
+        }
+
+        pageGrid.innerHTML = "";
+
+        const rowsForPage = pageRowGroups[pageIndex] || [];
+        rowsForPage.forEach((row) => {
+          row.cards.forEach((card) => {
+            pageGrid.appendChild(card.cloneNode(true));
+          });
+        });
+
+        pageGrid.style.cssText += `
+        display:grid !important;
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        align-items:start !important;
+        width:100% !important;
+        box-sizing:border-box !important;
+      `;
+
+        pageClone.querySelectorAll("img").forEach((img) => {
+          const im = img as HTMLImageElement;
+          im.style.width = "auto";
+          im.style.height = "auto";
+          im.style.maxWidth = "100%";
+          im.style.maxHeight = "100%";
+          im.style.objectFit = "contain";
+          im.style.objectPosition = "center";
+          im.style.display = "block";
+          im.style.margin = "0 auto";
+        });
+
+        await renderPageToPdf(pageClone, pageIndex);
       }
 
       const safeFileName =
