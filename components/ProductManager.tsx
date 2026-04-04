@@ -565,12 +565,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <Package className="w-5 h-5 text-blue-600" />
           Tus Productos
         </h2>
-        <button
+        {/* <button
           onClick={handleExportJson}
           className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-green-700"
         >
           Exportar JSON
-        </button>
+        </button> */}
 
         <div className="flex items-center gap-2">
           {(onDownloadPdfAll || onDownloadPdfByCategory) && (
