@@ -533,6 +533,30 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     formData.originalPrice.trim() === "" ? undefined : previewOriginalPrice
   );
 
+  const handleExportJson = () => {
+    try {
+      // Si ya tienes los productos en props, usa esto:
+      const data = products;
+
+      // Si quieres leer directamente de localStorage:
+      // const data = JSON.parse(localStorage.getItem("products") || "[]");
+
+      const json = JSON.stringify(data, null, 2); // bonito (indentado)
+
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "productos.json";
+      link.click();
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error exportando JSON", error);
+    }
+  };
+
   return (
     <div className="space-y-4 mb-24">
       {/* Header */}
@@ -541,34 +565,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <Package className="w-5 h-5 text-blue-600" />
           Tus Productos
         </h2>
-
-        {/*
         <button
-          onClick={() => seedProducts(100)}
-          className="bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-colors"
+          onClick={handleExportJson}
+          className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-green-700"
         >
-          Cargar 100 demo
+          Exportar JSON
         </button>
-        */}
-
-        {/*
-        <input
-          ref={importInputRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleImportJsonFile(f);
-          }}
-        />
-        <button
-          onClick={handleImportJsonClick}
-          className="bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100"
-        >
-          Importar JSON
-        </button>
-        */}
 
         <div className="flex items-center gap-2">
           {(onDownloadPdfAll || onDownloadPdfByCategory) && (
