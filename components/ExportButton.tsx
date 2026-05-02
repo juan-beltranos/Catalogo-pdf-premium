@@ -23,7 +23,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
   const [quality, setQuality] = useState<"normal" | "alta">("normal");
+  const [showShareInstructions, setShowShareInstructions] = useState(false);
+  const [sharedFileName, setSharedFileName] = useState("");
   const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const categories = useMemo(() => {
     const groups = groupByCategory(products);
@@ -37,7 +40,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   }): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
-    const EXPORT_WIDTH_PX = 800;
+    const EXPORT_WIDTH_PX = 1200;
     const PDF_MARGIN_MM = 10;
     const resolvedQuality = opts?.quality ?? quality;
     const canvasScale = resolvedQuality === "alta" ? 2 : 1.5;
@@ -61,11 +64,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       img.complete && img.naturalWidth > 0
         ? Promise.resolve()
         : new Promise<void>((res) => {
-          img.onload = () => res();
-          img.onerror = () => res();
-        });
+            img.onload = () => res();
+            img.onerror = () => res();
+          });
 
-    const getPos = (el: HTMLElement, stop: HTMLElement | null = null) => {
+    const getPos = (el: HTMLElement, stop: HTMLElement) => {
       let top = 0;
       let left = 0;
       let cur: HTMLElement | null = el;
@@ -151,15 +154,42 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const productsGrid = clone.querySelector(
         ".products-grid",
       ) as HTMLElement | null;
-      if (!productsGrid) throw new Error("No se encontró .products-grid");
+      if (productsGrid) {
+        productsGrid.style.cssText += `
+        display:grid !important;
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        column-gap:24px !important;
+        row-gap:32px !important;
+        align-items:start !important;
+        width:100% !important;
+        box-sizing:border-box !important;
+      `;
+      }
 
-      productsGrid.style.cssText += `
-      display:grid !important;
-      grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-      align-items:start !important;
-      width:100% !important;
-      box-sizing:border-box !important;
-    `;
+      (
+        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
+      ).forEach((media) => {
+        media.style.aspectRatio = "unset";
+        media.style.height = "500px";
+        media.style.minHeight = "500px";
+        media.style.maxHeight = "500px";
+      });
+
+      (
+        Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]
+      ).forEach((el) => {
+        el.style.fontSize = "28px";
+        el.style.lineHeight = "1.2";
+      });
+
+      (
+        Array.from(
+          clone.querySelectorAll(".product-pdf .catalog-html"),
+        ) as HTMLElement[]
+      ).forEach((el) => {
+        el.style.fontSize = "18px";
+        el.style.lineHeight = "1.6";
+      });
 
       const imgs = Array.from(
         clone.querySelectorAll("img"),
@@ -188,7 +218,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         imgs.map(async (img) => {
           if (img.naturalWidth > 0) return;
           const src = img.getAttribute("src") || "";
-          if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
+          if (!src || src.startsWith("data:") || src.startsWith("blob:"))
+            return;
           try {
             const resp = await fetch(src, { mode: "cors" });
             const blob = await resp.blob();
@@ -214,6 +245,77 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         img.style.margin = "0 auto";
       });
 
+      (
+        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
+      ).forEach((media) => {
+        media.style.aspectRatio = "4 / 3.5";
+        media.style.minHeight = "230px";
+        media.style.maxHeight = "280px";
+      });
+
+      await waitFrames(4);
+      if ("fonts" in iDoc) {
+        try {
+          await (iDoc as any).fonts.ready;
+        } catch {}
+      }
+      if (iframe.contentWindow && "fonts" in iframe.contentWindow) {
+        try {
+          await (iframe.contentWindow as any).fonts.ready;
+        } catch {}
+      }
+      await waitFrames(6);
+
+      const fullHeight = clone.scrollHeight || clone.offsetHeight;
+
+      iframe.style.height = `${fullHeight + 20}px`;
+      await waitFrames(2);
+
+      type LinkArea = {
+        url: string;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      };
+      const linkAreasCss: LinkArea[] = [];
+
+      const pushLink = (el: HTMLElement, url: string) => {
+        if (!url || url === "#") return;
+        const pos = getPos(el, clone);
+        if (pos.width <= 0 || pos.height <= 0) return;
+        linkAreasCss.push({ url, ...pos });
+      };
+
+      const waFromDom =
+        clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
+      const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
+
+      (
+        Array.from(
+          clone.querySelectorAll('[data-pdf-link="product"]'),
+        ) as HTMLElement[]
+      ).forEach((el) => {
+        const name = (el.dataset.productName || "").trim();
+        const price = (el.dataset.productPrice || "").trim();
+        if (!name) return;
+        let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
+        if (businessWa) {
+          const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(Number(price || 0))}`;
+          url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
+        }
+        if (url && url !== "#") pushLink(el, url);
+      });
+
+      (
+        Array.from(clone.querySelectorAll("a[href]")) as HTMLAnchorElement[]
+      ).forEach((a) => {
+        const href = (a.getAttribute("href") || "").trim();
+        if (!href || href === "#") return;
+        if (a.matches('[data-pdf-link="product"]')) return;
+        pushLink(a, href);
+      });
+
       clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
         const el_ = el as HTMLElement;
         el_.style.display = "flex";
@@ -223,7 +325,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
         el_.style.height = "30px";
-        el_.style.fontSize = "18px";
         const span = el_.querySelector("span");
         if (span) {
           span.style.display = "flex";
@@ -236,7 +337,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           span.style.height = "100%";
           span.style.position = "static";
           span.style.transform = "none";
-          span.style.fontSize = "18px";
         }
       });
 
@@ -299,22 +399,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
       });
 
-      await waitFrames(4);
-      if ("fonts" in iDoc) {
-        try {
-          await (iDoc as any).fonts.ready;
-        } catch { }
-      }
-      if (iframe.contentWindow && "fonts" in iframe.contentWindow) {
-        try {
-          await (iframe.contentWindow as any).fonts.ready;
-        } catch { }
-      }
-      await waitFrames(6);
-
-      const fullHeight = clone.scrollHeight || clone.offsetHeight;
-      iframe.style.height = `${fullHeight + 20}px`;
-      await waitFrames(2);
+      const iWin = iframe.contentWindow!;
+      const canvas = await html2canvas(clone, {
+        scale: canvasScale,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: EXPORT_WIDTH_PX,
+        windowWidth: EXPORT_WIDTH_PX,
+        windowHeight: fullHeight,
+        scrollX: -(iWin.scrollX ?? 0),
+        scrollY: -(iWin.scrollY ?? 0),
+      });
 
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
@@ -322,199 +419,95 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const usableWmm = pageW - PDF_MARGIN_MM * 2;
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
-      const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
-      const pageBodyHeightCss = usableHmm * cssPxPerMm;
+      const pxPerMm = (EXPORT_WIDTH_PX * canvasScale) / usableWmm;
+      const pageHeightPx = Math.floor(usableHmm * pxPerMm);
+
+      const domTotalHeight = fullHeight || 1;
+      const scaleY = canvas.height / domTotalHeight;
 
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf"),
       ) as HTMLElement[];
 
-      type RowInfo = {
-        top: number;
-        bottom: number;
-        cards: HTMLElement[];
-      };
-
-      const rowsMap = new Map<number, RowInfo>();
-      const ROW_TOLERANCE_PX = 6;
+      const bpSet = new Set<number>();
+      bpSet.add(0);
+      bpSet.add(canvas.height);
 
       cards.forEach((card) => {
         const pos = getPos(card, clone);
-        const matchedKey = Array.from(rowsMap.keys()).find(
-          (k) => Math.abs(k - pos.top) <= ROW_TOLERANCE_PX,
+        const cardTopCanvas = Math.max(0, Math.floor(pos.top * scaleY) - 4);
+        const cardBotCanvas = Math.min(
+          canvas.height,
+          Math.floor((pos.top + pos.height) * scaleY) + 8,
         );
-
-        if (matchedKey !== undefined) {
-          const row = rowsMap.get(matchedKey)!;
-          row.top = Math.min(row.top, pos.top);
-          row.bottom = Math.max(row.bottom, pos.top + pos.height);
-          row.cards.push(card);
-        } else {
-          rowsMap.set(pos.top, {
-            top: pos.top,
-            bottom: pos.top + pos.height,
-            cards: [card],
-          });
-        }
+        bpSet.add(cardTopCanvas);
+        bpSet.add(cardBotCanvas);
       });
 
-      const rows = Array.from(rowsMap.values())
-        .sort((a, b) => a.top - b.top)
-        .map((row) => ({
-          ...row,
-          cards: row.cards.sort((a, b) => {
-            const pa = getPos(a, clone);
-            const pb = getPos(b, clone);
-            return pa.left - pb.left;
-          }),
-        }));
+      const breakpoints = Array.from(bpSet).sort((a, b) => a - b);
 
-      const contentWrap = productsGrid.parentElement as HTMLElement;
-      if (!contentWrap) throw new Error("No se encontró el contenedor del grid");
-
-      const rootChildren = Array.from(clone.children) as HTMLElement[];
-      const contentIndex = rootChildren.indexOf(contentWrap);
-
-      const fixedBeforeContentHeight = rootChildren
-        .slice(0, contentIndex)
-        .reduce((sum, el) => sum + el.offsetHeight, 0);
-
-      const contentChromeHeight = contentWrap.offsetHeight - productsGrid.offsetHeight;
-
-      const firstPageRowsHeightLimit =
-        pageBodyHeightCss - fixedBeforeContentHeight - contentChromeHeight;
-
-      const nextPageRowsHeightLimit = pageBodyHeightCss - contentChromeHeight;
-
-      if (firstPageRowsHeightLimit <= 80 || nextPageRowsHeightLimit <= 80) {
-        throw new Error("No hay alto suficiente para paginar el catálogo");
-      }
-
-      const pageRowGroups: RowInfo[][] = [];
-      let currentPageRows: RowInfo[] = [];
-      let currentLimit = firstPageRowsHeightLimit;
-      let currentHeight = 0;
-      let currentStartTop = 0;
-
-      rows.forEach((row, index) => {
-        const rowHeight =
-          currentPageRows.length === 0
-            ? row.bottom - row.top
-            : row.bottom - currentStartTop;
-
-        if (currentPageRows.length === 0) {
-          currentPageRows.push(row);
-          currentStartTop = row.top;
-          currentHeight = row.bottom - row.top;
-          return;
+      const pickBreak = (from: number, limit: number): number => {
+        let chosen = -1;
+        for (const v of breakpoints) {
+          if (v <= limit && v > from) chosen = v;
+          if (v > limit) break;
         }
-
-        if (rowHeight <= currentLimit) {
-          currentPageRows.push(row);
-          currentHeight = row.bottom - currentStartTop;
-        } else {
-          pageRowGroups.push(currentPageRows);
-          currentPageRows = [row];
-          currentLimit = nextPageRowsHeightLimit;
-          currentStartTop = row.top;
-          currentHeight = row.bottom - row.top;
-        }
-
-        if (index === rows.length - 1 && currentPageRows.length) {
-          // noop, se empuja fuera
-        }
-      });
-
-      if (currentPageRows.length) {
-        pageRowGroups.push(currentPageRows);
-      }
-
-      if (pageRowGroups.length === 0) {
-        pageRowGroups.push([]);
-      }
-
-      const waFromDom =
-        clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
-      const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
-
-      type LinkArea = {
-        url: string;
-        left: number;
-        top: number;
-        width: number;
-        height: number;
+        return chosen;
       };
 
-      const renderPageToPdf = async (
-        pageRoot: HTMLElement,
-        pageIndex: number,
-      ) => {
-        iDoc.body.innerHTML = "";
-        iDoc.body.appendChild(pageRoot);
+      let offsetY = 0;
+      let pageIndex = 0;
+      const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
 
-        await waitFrames(3);
-        if ("fonts" in iDoc) {
-          try {
-            await (iDoc as any).fonts.ready;
-          } catch { }
-        }
-        await waitFrames(3);
+      while (offsetY < canvas.height) {
+        const idealEnd = offsetY + pageHeightPx;
+        let endY = pickBreak(offsetY, idealEnd);
 
-        const pageHeight = pageRoot.scrollHeight || pageRoot.offsetHeight;
-        iframe.style.height = `${pageHeight + 20}px`;
-        await waitFrames(2);
-
-        const linkAreasCss: LinkArea[] = [];
-
-        const pushLink = (el: HTMLElement, url: string) => {
-          if (!url || url === "#") return;
-          const pos = getPos(el, pageRoot);
-          if (pos.width <= 0 || pos.height <= 0) return;
-          linkAreasCss.push({ url, ...pos });
-        };
-
-        (
-          Array.from(
-            pageRoot.querySelectorAll('[data-pdf-link="product"]'),
-          ) as HTMLElement[]
-        ).forEach((el) => {
-          const name = (el.dataset.productName || "").trim();
-          const price = (el.dataset.productPrice || "").trim();
-          if (!name) return;
-          let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
-          if (businessWa) {
-            const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(Number(price || 0))}`;
-            url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
+        if (endY === -1) {
+          let breakBefore = -1;
+          for (const card of cards) {
+            const pos = getPos(card, clone);
+            const cardTop = Math.max(0, Math.floor(pos.top * scaleY) - 4);
+            const cardBot = Math.floor((pos.top + pos.height) * scaleY);
+            if (cardTop < idealEnd && cardBot > idealEnd) {
+              const candidate = Math.max(offsetY + 1, cardTop);
+              if (
+                candidate > offsetY &&
+                (breakBefore === -1 || candidate < breakBefore)
+              ) {
+                breakBefore = candidate;
+              }
+            }
           }
-          if (url && url !== "#") pushLink(el, url);
-        });
+          endY =
+            breakBefore !== -1
+              ? breakBefore
+              : Math.min(idealEnd, canvas.height);
+        }
 
-        (
-          Array.from(pageRoot.querySelectorAll("a[href]")) as HTMLAnchorElement[]
-        ).forEach((a) => {
-          const href = (a.getAttribute("href") || "").trim();
-          if (!href || href === "#") return;
-          if (a.matches('[data-pdf-link="product"]')) return;
-          pushLink(a, href);
-        });
+        const sliceH = endY - offsetY;
+        if (sliceH <= 0) break;
 
-        const iWin = iframe.contentWindow!;
-        const pageCanvas = await html2canvas(pageRoot, {
-          scale: canvasScale,
-          useCORS: true,
-          allowTaint: false,
-          backgroundColor: "#ffffff",
-          logging: false,
-          width: EXPORT_WIDTH_PX,
-          windowWidth: EXPORT_WIDTH_PX,
-          windowHeight: pageHeight,
-          scrollX: -(iWin.scrollX ?? 0),
-          scrollY: -(iWin.scrollY ?? 0),
-        });
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceH;
+        const ctx = pageCanvas.getContext("2d")!;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0,
+          offsetY,
+          canvas.width,
+          sliceH,
+          0,
+          0,
+          canvas.width,
+          sliceH,
+        );
 
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
-        const imgHeightMm = pageCanvas.height / ((EXPORT_WIDTH_PX * canvasScale) / usableWmm);
-
+        const sliceHmm = sliceH / pxPerMm;
         if (pageIndex > 0) pdf.addPage();
         pdf.addImage(
           imgData,
@@ -522,86 +515,28 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           PDF_MARGIN_MM,
           PDF_MARGIN_MM,
           usableWmm,
-          imgHeightMm,
+          sliceHmm,
           undefined,
           "FAST",
         );
 
+        const pageStartDom = offsetY / scaleY;
+        const pageEndDom = endY / scaleY;
         for (const la of linkAreasCss) {
+          const visTop = Math.max(la.top, pageStartDom);
+          const visBot = Math.min(la.top + la.height, pageEndDom);
+          if (visBot <= visTop) continue;
           pdf.link(
             PDF_MARGIN_MM + la.left / cssPxPerMm,
-            PDF_MARGIN_MM + la.top / cssPxPerMm,
+            PDF_MARGIN_MM + (visTop - pageStartDom) / cssPxPerMm,
             la.width / cssPxPerMm,
-            la.height / cssPxPerMm,
+            (visBot - visTop) / cssPxPerMm,
             { url: la.url },
           );
         }
-      };
 
-      for (let pageIndex = 0; pageIndex < pageRowGroups.length; pageIndex++) {
-        const pageClone = clone.cloneNode(true) as HTMLElement;
-        pageClone.classList.add("pdf-mode");
-        pageClone.style.width = `${EXPORT_WIDTH_PX}px`;
-        pageClone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
-        pageClone.style.margin = "0";
-        pageClone.style.background = "#ffffff";
-        pageClone.style.boxSizing = "border-box";
-        pageClone.style.transform = "none";
-        pageClone.style.minHeight = "auto";
-        pageClone.style.height = "auto";
-        pageClone.style.overflow = "visible";
-        pageClone.style.position = "relative";
-
-        const pageRootChildren = Array.from(pageClone.children) as HTMLElement[];
-        const pageContentWrap = pageRootChildren[contentIndex] as HTMLElement;
-        const pageGrid = pageClone.querySelector(".products-grid") as HTMLElement | null;
-
-        if (!pageContentWrap || !pageGrid) {
-          throw new Error("No se pudo construir la página del PDF");
-        }
-
-        if (pageIndex > 0) {
-          pageRootChildren.slice(0, contentIndex).forEach((el) => el.remove());
-        }
-
-        const isLastPage = pageIndex === pageRowGroups.length - 1;
-
-        // Quitar footer en todas menos en la última
-        const footerNodes = pageRootChildren.slice(contentIndex + 1);
-        if (!isLastPage) {
-          footerNodes.forEach((el) => el.remove());
-        }
-
-        pageGrid.innerHTML = "";
-
-        const rowsForPage = pageRowGroups[pageIndex] || [];
-        rowsForPage.forEach((row) => {
-          row.cards.forEach((card) => {
-            pageGrid.appendChild(card.cloneNode(true));
-          });
-        });
-
-        pageGrid.style.cssText += `
-        display:grid !important;
-        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        align-items:start !important;
-        width:100% !important;
-        box-sizing:border-box !important;
-      `;
-
-        pageClone.querySelectorAll("img").forEach((img) => {
-          const im = img as HTMLImageElement;
-          im.style.width = "auto";
-          im.style.height = "auto";
-          im.style.maxWidth = "100%";
-          im.style.maxHeight = "100%";
-          im.style.objectFit = "contain";
-          im.style.objectPosition = "center";
-          im.style.display = "block";
-          im.style.margin = "0 auto";
-        });
-
-        await renderPageToPdf(pageClone, pageIndex);
+        offsetY = endY;
+        pageIndex++;
       }
 
       const safeFileName =
@@ -617,6 +552,18 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     }
   };
 
+  // ── Descarga el blob como archivo ────────────────────────────────────────
+  const downloadBlob = (blob: Blob, outName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = outName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadPdfAll = async () => {
     try {
       setLoading(true);
@@ -624,14 +571,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         overrideFileName: fileName,
         quality,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = outName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF.");
@@ -650,14 +590,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         overrideFileName: outBase,
         quality,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = outName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF por categoría.");
@@ -666,110 +599,219 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     }
   };
 
+  // ── Compartir WhatsApp ────────────────────────────────────────────────────
+  // navigator.share() pierde el contexto de gesto del usuario tras un await
+  // largo. Estrategia: intentar share nativo en mobile; si falla o es desktop,
+  // descargar el PDF y mostrar modal con instrucciones paso a paso.
   const handleShareWhatsApp = async () => {
     try {
       setLoading(true);
       const { blob, fileName: fn } = await generatePdf({ quality });
-      const file = new File([blob], fn, { type: "application/pdf" });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file] });
-      } else {
-        window.open(
-          `https://wa.me/?text=${encodeURIComponent("Te comparto el catálogo en PDF")}`,
-          "_blank",
-        );
-        alert(
-          "Tu navegador no permite compartir archivos directo. Se abrió WhatsApp con el mensaje.",
-        );
+      setSharedFileName(fn);
+
+      // En mobile intentamos primero el share nativo (abre el sheet de iOS/Android
+      // donde el usuario puede elegir WhatsApp directamente con el archivo adjunto)
+      if (isMobile) {
+        const file = new File([blob], fn, { type: "application/pdf" });
+        const canShareFile =
+          typeof navigator.share === "function" &&
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [file] });
+
+        if (canShareFile) {
+          try {
+            await navigator.share({
+              title: "Catálogo PDF",
+              text: "Te comparto el catálogo en PDF 📄",
+              files: [file],
+            });
+            return; // ✅ El usuario eligió WhatsApp desde el share sheet nativo
+          } catch (shareErr: any) {
+            if (shareErr?.name === "AbortError") return; // Canceló voluntariamente
+            // Falló por el contexto de gesto → caemos al fallback
+            console.warn("share() falló, usando fallback:", shareErr);
+          }
+        }
       }
+
+      // Fallback para desktop y mobile sin share nativo:
+      // descargar el PDF y mostrar modal con instrucciones
+      downloadBlob(blob, fn);
+      setShowShareInstructions(true);
     } catch (error) {
       console.error(error);
-      const msg =
-        error instanceof Error
-          ? `${error.name}: ${error.message}`
-          : JSON.stringify(error, null, 2);
-      alert(`Error compartiendo PDF:\n\n${msg}`);
+      alert("Error generando el PDF. Por favor intenta de nuevo.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      data-hide-on-pdf="true"
-      className="fixed inset-x-0 bottom-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3"
-    >
-      <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white/85 backdrop-blur shadow-lg p-2">
-        <div className="flex flex-col gap-2">
-          {/* Quality toggle */}
-          <div className="flex items-center justify-between px-1">
-            <span className="text-xs text-slate-500 font-medium">
-              Calidad del PDF
-            </span>
-            <div className="flex rounded-lg overflow-hidden border border-black/10 text-xs font-semibold">
-              <button
-                onClick={() => setQuality("normal")}
-                disabled={loading}
-                className={`px-3 py-1.5 transition ${quality === "normal" ? "bg-slate-800 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
-              >
-                Normal
-              </button>
-              <button
-                onClick={() => setQuality("alta")}
-                disabled={loading}
-                className={`px-3 py-1.5 transition ${quality === "alta" ? "bg-slate-800 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
-              >
-                Alta
-              </button>
+    <>
+      {/* ── Modal de instrucciones para compartir por WhatsApp ── */}
+      {showShareInstructions && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 px-4 pb-8"
+          onClick={() => setShowShareInstructions(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-xl">
+                ✅
+              </div>
+              <div>
+                <p className="font-bold text-slate-800 text-base leading-tight">
+                  ¡PDF listo y descargado!
+                </p>
+                <p className="text-xs text-slate-400">{sharedFileName}</p>
+              </div>
             </div>
-          </div>
-          <p className="text-[10px] text-slate-400 px-1 -mt-1">
-            {quality === "normal"
-              ? "Archivo más liviano (~1–3 MB) — ideal para WhatsApp"
-              : "Mayor resolución (~4–8 MB) — mejor para imprimir"}
-          </p>
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleShareWhatsApp}
-              disabled={loading}
-              className="flex-1 h-12 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? "Preparando…" : "Compartir WhatsApp"}
-            </button>
-            <button
-              onClick={handleDownloadPdfAll}
-              disabled={loading}
-              className="flex-1 h-12 rounded-xl font-semibold text-white bg-green-600 hover:bg-green-700 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? "Creando…" : "PDF (Todo)"}
-            </button>
-          </div>
+            <p className="text-sm text-slate-500 mb-4">
+              Sigue estos pasos para enviarlo por WhatsApp:
+            </p>
 
-          <div className="flex gap-2">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="flex-1 h-12 rounded-xl border border-black/10 bg-white px-3 text-sm"
-              disabled={loading}
-            >
-              <option value="__ALL__">Selecciona categoría…</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+            {/* Pasos */}
+            <ol className="space-y-3 mb-5">
+              {[
+                { n: "1", text: "Abre WhatsApp en tu dispositivo" },
+                { n: "2", text: "Elige el contacto o grupo al que quieres enviar" },
+                {
+                  n: "3",
+                  text: (
+                    <>
+                      Toca el ícono de clip{" "}
+                      <span className="font-semibold">📎</span> y selecciona{" "}
+                      <span className="font-semibold">Documento</span>
+                    </>
+                  ),
+                },
+                {
+                  n: "4",
+                  text: (
+                    <>
+                      Busca el archivo{" "}
+                      <span className="font-semibold text-slate-700">
+                        "{sharedFileName}"
+                      </span>{" "}
+                      en tu carpeta de Descargas
+                    </>
+                  ),
+                },
+              ].map(({ n, text }) => (
+                <li key={n} className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                    {n}
+                  </span>
+                  <span className="text-sm text-slate-700">{text}</span>
+                </li>
               ))}
-            </select>
+            </ol>
+
+            {/* Botones */}
             <button
-              onClick={handleDownloadPdfSelectedCategory}
-              disabled={loading || selectedCategory === "__ALL__"}
-              className="flex-1 h-12 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={() => {
+                setShowShareInstructions(false);
+                window.open(
+                  isMobile ? "whatsapp://" : "https://web.whatsapp.com",
+                  "_blank",
+                );
+              }}
+              className="w-full h-12 rounded-xl font-semibold text-white bg-emerald-500 hover:bg-emerald-600 active:scale-[0.99] transition mb-2"
             >
-              {loading ? "Creando…" : "PDF (Categoría)"}
+              Abrir WhatsApp →
+            </button>
+            <button
+              onClick={() => setShowShareInstructions(false)}
+              className="w-full h-10 rounded-xl text-sm text-slate-400 hover:text-slate-600 transition"
+            >
+              Cerrar
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── Barra de exportación fija en la parte inferior ── */}
+      <div
+        data-hide-on-pdf="true"
+        className="fixed inset-x-0 bottom-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3"
+      >
+        <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white/85 backdrop-blur shadow-lg p-2">
+          <div className="flex flex-col gap-2">
+            {/* Quality toggle */}
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-slate-500 font-medium">
+                Calidad del PDF
+              </span>
+              <div className="flex rounded-lg overflow-hidden border border-black/10 text-xs font-semibold">
+                <button
+                  onClick={() => setQuality("normal")}
+                  disabled={loading}
+                  className={`px-3 py-1.5 transition ${quality === "normal" ? "bg-slate-800 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                >
+                  Normal
+                </button>
+                <button
+                  onClick={() => setQuality("alta")}
+                  disabled={loading}
+                  className={`px-3 py-1.5 transition ${quality === "alta" ? "bg-slate-800 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                >
+                  Alta
+                </button>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 px-1 -mt-1">
+              {quality === "normal"
+                ? "Archivo más liviano (~1–3 MB) — ideal para WhatsApp"
+                : "Mayor resolución (~4–8 MB) — mejor para imprimir"}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleShareWhatsApp}
+                disabled={loading}
+                className="flex-1 h-12 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? "Preparando…" : "Compartir WhatsApp"}
+              </button>
+              <button
+                onClick={handleDownloadPdfAll}
+                disabled={loading}
+                className="flex-1 h-12 rounded-xl font-semibold text-white bg-green-600 hover:bg-green-700 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? "Creando…" : "PDF (Todo)"}
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="flex-1 h-12 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                disabled={loading}
+              >
+                <option value="__ALL__">Selecciona categoría…</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleDownloadPdfSelectedCategory}
+                disabled={loading || selectedCategory === "__ALL__"}
+                className="flex-1 h-12 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? "Creando…" : "PDF (Categoría)"}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
