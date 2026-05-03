@@ -160,7 +160,7 @@ export const App: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 py-10">
           <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
             <a
-              href="https://catalogo-interactivo.vercel.app/#/admin/register?source=client"
+              href="https://www.inteliasb.com/catalogo-digital"
               target="_blank"
               rel="noopener noreferrer"
               className="block w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm transition-transform hover:scale-[1.01]"
