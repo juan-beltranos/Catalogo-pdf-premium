@@ -65,12 +65,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     const resolvedQuality = opts?.quality ?? quality;
 
-    /**
-     * IMPORTANTE:
-     * Antes se capturaba TODO el catálogo en un solo canvas gigante.
-     * Con 100+ productos, eso puede producir un canvas blanco por límites
-     * del navegador/memoria. Ahora se captura página por página.
-     */
     const canvasScale = resolvedQuality === "alta" ? 1.6 : 1.25;
 
     const jpegQuality =
@@ -218,14 +212,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       if (productsGrid) {
         productsGrid.style.cssText += `
-          display:grid !important;
-          grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-          column-gap:24px !important;
-          row-gap:32px !important;
-          align-items:start !important;
-          width:100% !important;
-          box-sizing:border-box !important;
-        `;
+        display:grid !important;
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        column-gap:24px !important;
+        row-gap:32px !important;
+        align-items:start !important;
+        width:100% !important;
+        box-sizing:border-box !important;
+      `;
       }
 
       (
@@ -259,7 +253,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       updateProgress(18, "Preparando imágenes...");
 
-      // Resolver imágenes desde imageDB
       await Promise.all(
         imgs.map(async (img) => {
           const id = img.dataset.imgid;
@@ -289,7 +282,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       updateProgress(35, "Validando imágenes...");
 
-      // Reintentar imágenes que no cargaron
       const failedImgs = imgs.filter((img) => img.naturalWidth === 0);
       const BATCH_SIZE = 8;
 
@@ -297,7 +289,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         const batch = failedImgs.slice(i, i + BATCH_SIZE);
 
         const currentProgress =
-          35 + Math.min(8, ((i + batch.length) / Math.max(1, failedImgs.length)) * 8);
+          35 +
+          Math.min(
+            8,
+            ((i + batch.length) / Math.max(1, failedImgs.length)) * 8,
+          );
 
         updateProgress(currentProgress, "Reintentando imágenes pendientes...");
 
@@ -325,7 +321,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       updateProgress(45, "Procesando imágenes para PDF...");
 
-      // Convertir imágenes a data URL para evitar problemas CORS/canvas
       const CONVERT_BATCH = 8;
 
       for (let i = 0; i < imgs.length; i += CONVERT_BATCH) {
@@ -382,9 +377,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         media.style.height = "auto";
         media.style.minHeight = "230px";
         media.style.maxHeight = "280px";
+        media.style.overflow = "hidden";
       });
 
-      // Badges y elementos inline
       clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
         const el_ = el as HTMLElement;
         el_.style.display = "flex";
@@ -504,7 +499,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       updateProgress(70, "Preparando links clickeables...");
 
-      // Recolectar links
       type LinkArea = {
         url: string;
         left: number;
@@ -513,67 +507,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         height: number;
       };
 
-      const linkAreasCss: LinkArea[] = [];
-
-      const pushLink = (el: HTMLElement, url: string) => {
-        if (!url || url === "#") return;
-
-        const pos = getPos(el, clone);
-
-        if (pos.width <= 0 || pos.height <= 0) return;
-
-        linkAreasCss.push({
-          url,
-          ...pos,
-        });
-      };
-
       const waFromDom =
         clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
 
       const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
 
-      (
-        Array.from(
-          clone.querySelectorAll('[data-pdf-link="product"]'),
-        ) as HTMLElement[]
-      ).forEach((el) => {
-        const name = (el.dataset.productName || "").trim();
-        const price = (el.dataset.productPrice || "").trim();
-
-        if (!name) return;
-
-        let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
-
-        if (businessWa) {
-          const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(
-            Number(price || 0),
-          )}`;
-
-          url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(
-            msg,
-          )}`;
-        }
-
-        if (url && url !== "#") {
-          pushLink(el, url);
-        }
-      });
-
-      (
-        Array.from(clone.querySelectorAll("a[href]")) as HTMLAnchorElement[]
-      ).forEach((a) => {
-        const href = (a.getAttribute("href") || "").trim();
-
-        if (!href || href === "#") return;
-        if (a.matches('[data-pdf-link="product"]')) return;
-
-        pushLink(a, href);
-      });
-
       updateProgress(73, "Creando documento PDF...");
 
-      // Crear PDF
       const pdf = new jsPDF({
         orientation: "p",
         unit: "mm",
@@ -587,66 +527,212 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
       const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
-      const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm);
+      const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 28;
 
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf"),
       ) as HTMLElement[];
 
-      const bpSet = new Set<number>();
-      bpSet.add(0);
-      bpSet.add(fullHeight);
+      type ProductRow = {
+        top: number;
+        cards: HTMLElement[];
+      };
+
+      const ROW_TOLERANCE_PX = 40;
+      const rows: ProductRow[] = [];
 
       cards.forEach((card) => {
         const pos = getPos(card, clone);
+        const cardTop = Math.floor(pos.top);
 
-        const cardTop = Math.max(0, Math.floor(pos.top) - 6);
-        const cardBottom = Math.min(
-          fullHeight,
-          Math.floor(pos.top + pos.height) + 10,
+        const existingRow = rows.find(
+          (row) => Math.abs(row.top - cardTop) <= ROW_TOLERANCE_PX,
         );
 
-        bpSet.add(cardTop);
-        bpSet.add(cardBottom);
+        if (existingRow) {
+          existingRow.cards.push(card);
+          existingRow.top = Math.min(existingRow.top, cardTop);
+        } else {
+          rows.push({
+            top: cardTop,
+            cards: [card],
+          });
+        }
       });
 
-      const breakpoints = Array.from(bpSet).sort((a, b) => a - b);
+      rows.sort((a, b) => a.top - b.top);
 
-      const pickBreak = (from: number, limit: number): number => {
-        let chosen = -1;
+      const styleProductCardForPdf = (card: HTMLElement) => {
+        card.style.breakInside = "avoid";
+        card.style.pageBreakInside = "avoid";
+        card.style.webkitColumnBreakInside = "avoid";
 
-        for (const v of breakpoints) {
-          if (v <= limit && v > from) {
-            chosen = v;
-          }
+        const media = card.querySelector(".product-media") as HTMLElement | null;
 
-          if (v > limit) break;
+        if (media) {
+          media.style.aspectRatio = "4 / 3.5";
+          media.style.height = "auto";
+          media.style.minHeight = "230px";
+          media.style.maxHeight = "280px";
+          media.style.overflow = "hidden";
+          media.style.display = "flex";
+          media.style.alignItems = "center";
+          media.style.justifyContent = "center";
         }
 
-        return chosen;
+        const img = card.querySelector("img") as HTMLImageElement | null;
+
+        if (img) {
+          img.style.width = "auto";
+          img.style.height = "auto";
+          img.style.maxWidth = "100%";
+          img.style.maxHeight = "100%";
+          img.style.objectFit = "contain";
+          img.style.objectPosition = "center";
+          img.style.display = "block";
+          img.style.margin = "0 auto";
+        }
       };
 
-      const renderPageCanvas = async (
-        source: HTMLElement,
-        y: number,
-        height: number,
+      const controlHeaderFooter = (
+        page: HTMLElement,
+        includeHeader: boolean,
+        includeFooter: boolean,
       ) => {
+        const pageGrid = page.querySelector(".products-grid") as HTMLElement | null;
+
         /**
-         * Captura SOLO una página.
-         * Esto evita el canvas gigante que causaba PDFs en blanco.
+         * Opción recomendada:
+         * Si puedes marcar tu header/footer en el JSX, usa:
+         * data-pdf-header="true"
+         * data-pdf-footer="true"
          */
-        return await html2canvas(source, {
+        page
+          .querySelectorAll(
+            '[data-pdf-header="true"], .catalog-header, .pdf-header, header',
+          )
+          .forEach((el) => {
+            (el as HTMLElement).style.display = includeHeader ? "" : "none";
+          });
+
+        page
+          .querySelectorAll(
+            '[data-pdf-footer="true"], .catalog-footer, .pdf-footer, footer',
+          )
+          .forEach((el) => {
+            (el as HTMLElement).style.display = includeFooter ? "" : "none";
+          });
+
+        /**
+         * Fallback estructural:
+         * Si no hay clases/data-attributes, ocultamos bloques antes/después
+         * del grid según corresponda.
+         */
+        if (pageGrid) {
+          let current: HTMLElement | null = pageGrid;
+
+          while (current && current !== page) {
+            const parent = current.parentElement as HTMLElement | null;
+
+            if (!parent) break;
+
+            const siblings = Array.from(parent.children) as HTMLElement[];
+            const currentIndex = siblings.indexOf(current);
+
+            siblings.forEach((sibling, index) => {
+              if (index < currentIndex && !includeHeader) {
+                sibling.style.display = "none";
+              }
+
+              if (index > currentIndex && !includeFooter) {
+                sibling.style.display = "none";
+              }
+            });
+
+            current = parent;
+          }
+        }
+      };
+
+      const makePage = (includeHeader: boolean) => {
+        /**
+         * Creamos la página desde el mismo clon del catálogo.
+         * Así se conserva el header, paddings, ancho y estilos originales.
+         */
+        const page = clone.cloneNode(true) as HTMLElement;
+
+        page.style.position = "absolute";
+        page.style.left = "-99999px";
+        page.style.top = "0";
+        page.style.width = `${EXPORT_WIDTH_PX}px`;
+        page.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
+        page.style.background = "#ffffff";
+        page.style.boxSizing = "border-box";
+        page.style.margin = "0";
+        page.style.transform = "none";
+        page.style.visibility = "visible";
+        page.style.opacity = "1";
+        page.style.overflow = "visible";
+        page.style.zIndex = "-9999";
+        page.style.pointerEvents = "none";
+
+        page.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
+          (el as HTMLElement).style.display = "none";
+        });
+
+        const pageGrid = page.querySelector(
+          ".products-grid",
+        ) as HTMLElement | null;
+
+        if (!pageGrid) {
+          document.body.appendChild(page);
+
+          return {
+            page,
+            grid: page,
+          };
+        }
+
+        pageGrid.querySelectorAll(".product-pdf").forEach((el) => el.remove());
+
+        pageGrid.style.cssText += `
+        display:grid !important;
+        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        column-gap:24px !important;
+        row-gap:32px !important;
+        align-items:start !important;
+        width:100% !important;
+        box-sizing:border-box !important;
+        background:#ffffff !important;
+      `;
+
+        /**
+         * Por defecto, al crear la página:
+         * - header depende de includeHeader.
+         * - footer se oculta temporalmente y se define después, cuando ya sabemos
+         *   si esta será la última página.
+         */
+        controlHeaderFooter(page, includeHeader, false);
+
+        document.body.appendChild(page);
+
+        return {
+          page,
+          grid: pageGrid,
+        };
+      };
+
+      const renderDomPageCanvas = async (pageEl: HTMLElement) => {
+        await waitFrames(2);
+
+        return await html2canvas(pageEl, {
           scale: canvasScale,
           useCORS: true,
           allowTaint: true,
           backgroundColor: "#ffffff",
           logging: false,
           width: EXPORT_WIDTH_PX,
-          height,
           windowWidth: EXPORT_WIDTH_PX,
-          windowHeight: height,
-          x: 0,
-          y,
           scrollX: 0,
           scrollY: 0,
           removeContainer: true,
@@ -675,61 +761,119 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         });
       };
 
-      let offsetY = 0;
-      let pageIndex = 0;
-      const totalPagesEstimate = Math.max(
-        1,
-        Math.ceil(fullHeight / pageHeightCssPx),
-      );
+      const collectPageLinks = (page: HTMLElement): LinkArea[] => {
+        const pageLinks: LinkArea[] = [];
 
-      updateProgress(
-        75,
-        `Renderizando página 1 de ${totalPagesEstimate}...`,
-      );
+        const pushPageLink = (el: HTMLElement, url: string) => {
+          if (!url || url === "#") return;
 
-      while (offsetY < fullHeight) {
-        const idealEnd = offsetY + pageHeightCssPx;
-        let endY = pickBreak(offsetY, idealEnd);
+          const pos = getPos(el, page);
 
-        if (endY === -1 || endY <= offsetY) {
-          let breakBefore = -1;
+          if (pos.width <= 0 || pos.height <= 0) return;
 
-          for (const card of cards) {
-            const pos = getPos(card, clone);
-            const cardTop = Math.max(0, Math.floor(pos.top) - 6);
-            const cardBot = Math.floor(pos.top + pos.height);
+          pageLinks.push({
+            url,
+            ...pos,
+          });
+        };
 
-            if (cardTop < idealEnd && cardBot > idealEnd) {
-              const candidate = Math.max(offsetY + 1, cardTop);
+        (
+          Array.from(
+            page.querySelectorAll('[data-pdf-link="product"]'),
+          ) as HTMLElement[]
+        ).forEach((el) => {
+          const name = (el.dataset.productName || "").trim();
+          const price = (el.dataset.productPrice || "").trim();
 
-              if (
-                candidate > offsetY &&
-                (breakBefore === -1 || candidate < breakBefore)
-              ) {
-                breakBefore = candidate;
-              }
-            }
+          if (!name) return;
+
+          let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
+
+          if (businessWa) {
+            const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(
+              Number(price || 0),
+            )}`;
+
+            url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(
+              msg,
+            )}`;
           }
 
-          endY =
-            breakBefore !== -1
-              ? breakBefore
-              : Math.min(idealEnd, fullHeight);
+          pushPageLink(el, url);
+        });
+
+        (
+          Array.from(page.querySelectorAll("a[href]")) as HTMLAnchorElement[]
+        ).forEach((a) => {
+          const href = (a.getAttribute("href") || "").trim();
+
+          if (!href || href === "#") return;
+          if (a.matches('[data-pdf-link="product"]')) return;
+
+          pushPageLink(a, href);
+        });
+
+        return pageLinks;
+      };
+
+      let pageIndex = 0;
+      let rowIndex = 0;
+      const totalPagesEstimate = Math.max(1, Math.ceil(rows.length / 3));
+
+      updateProgress(75, `Renderizando página 1 de ${totalPagesEstimate}...`);
+
+      while (rowIndex < rows.length) {
+        const { page, grid } = makePage(pageIndex === 0);
+
+        let rowsAdded = 0;
+
+        while (rowIndex < rows.length) {
+          const currentRow = rows[rowIndex];
+
+          const rowClones: HTMLElement[] = currentRow.cards.map((card) => {
+            const clonedCard = card.cloneNode(true) as HTMLElement;
+            styleProductCardForPdf(clonedCard);
+            return clonedCard;
+          });
+
+          rowClones.forEach((clonedCard) => grid.appendChild(clonedCard));
+
+          await waitFrames(1);
+
+          const currentHeight = page.scrollHeight || page.offsetHeight;
+
+          if (currentHeight > pageHeightCssPx && rowsAdded > 0) {
+            rowClones.forEach((clonedCard) => clonedCard.remove());
+            break;
+          }
+
+          rowsAdded++;
+          rowIndex++;
         }
 
-        const sliceH = Math.max(1, Math.floor(endY - offsetY));
+        const isLastPage = rowIndex >= rows.length;
+
+        /**
+         * Aquí se aplica el comportamiento final:
+         * - Header solo en la página 1.
+         * - Footer solo en la última página.
+         */
+        controlHeaderFooter(page, pageIndex === 0, isLastPage);
 
         await waitFrames(2);
 
         updateProgress(
-          75 + (pageIndex / totalPagesEstimate) * 20,
-          `Renderizando página ${pageIndex + 1} de ${totalPagesEstimate}...`,
+          75 + (pageIndex / Math.max(1, totalPagesEstimate)) * 20,
+          `Renderizando página ${pageIndex + 1}...`,
         );
 
-        const pageCanvas = await renderPageCanvas(clone, offsetY, sliceH);
+        const pageCanvas = await renderDomPageCanvas(page);
 
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
-        const sliceHmm = sliceH / cssPxPerMm;
+        const pageHmm = Math.min(
+          usableHmm,
+          pageCanvas.height / canvasScale / cssPxPerMm,
+        );
 
         if (pageIndex > 0) {
           pdf.addPage();
@@ -741,39 +885,33 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           PDF_MARGIN_MM,
           PDF_MARGIN_MM,
           usableWmm,
-          sliceHmm,
+          pageHmm,
           undefined,
           "FAST",
         );
 
-        const pageStartDom = offsetY;
-        const pageEndDom = endY;
+        const pageLinkAreas = collectPageLinks(page);
 
-        for (const la of linkAreasCss) {
-          const visTop = Math.max(la.top, pageStartDom);
-          const visBot = Math.min(la.top + la.height, pageEndDom);
-
-          if (visBot <= visTop) continue;
-
+        for (const la of pageLinkAreas) {
           pdf.link(
             PDF_MARGIN_MM + la.left / cssPxPerMm,
-            PDF_MARGIN_MM + (visTop - pageStartDom) / cssPxPerMm,
+            PDF_MARGIN_MM + la.top / cssPxPerMm,
             la.width / cssPxPerMm,
-            (visBot - visTop) / cssPxPerMm,
+            la.height / cssPxPerMm,
             { url: la.url },
           );
         }
 
-        // Liberar memoria del canvas de la página
         pageCanvas.width = 1;
         pageCanvas.height = 1;
 
-        offsetY = endY;
+        page.remove();
+
         pageIndex++;
 
         updateProgress(
-          75 + (pageIndex / totalPagesEstimate) * 20,
-          `Página ${pageIndex} de ${totalPagesEstimate} lista...`,
+          75 + (pageIndex / Math.max(1, totalPagesEstimate)) * 20,
+          `Página ${pageIndex} lista...`,
         );
 
         await waitFrames(1);
@@ -1056,8 +1194,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                   onClick={() => setQuality("normal")}
                   disabled={loading}
                   className={`px-3 py-1.5 transition ${quality === "normal"
-                      ? "bg-slate-800 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                    ? "bg-slate-800 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                 >
                   Normal
@@ -1067,8 +1205,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                   onClick={() => setQuality("alta")}
                   disabled={loading}
                   className={`px-3 py-1.5 transition ${quality === "alta"
-                      ? "bg-slate-800 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                    ? "bg-slate-800 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                 >
                   Alta
