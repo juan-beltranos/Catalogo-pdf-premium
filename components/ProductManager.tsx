@@ -572,6 +572,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           Exportar JSON
         </button> */}
 
+        {/* TEMPORAL: quitar cuando termines las pruebas */}
+        {/* <button
+          onClick={() => seedProducts(100)}
+          className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-purple-700"
+        >
+          🧪 Cargar 100 demo
+        </button> */}
+
         <div className="flex items-center gap-2">
           {(onDownloadPdfAll || onDownloadPdfByCategory) && (
             <div className="hidden sm:flex items-center gap-2">

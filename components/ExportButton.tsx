@@ -25,6 +25,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   const [quality, setQuality] = useState<"normal" | "alta">("normal");
   const [showShareInstructions, setShowShareInstructions] = useState(false);
   const [sharedFileName, setSharedFileName] = useState("");
+
+  // Barra de progreso
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState("");
+
   const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -33,6 +38,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     return groups.map(([cat]) => cat);
   }, [products]);
 
+  const resetProgressLater = () => {
+    setTimeout(() => {
+      setLoading(false);
+      setProgress(0);
+      setProgressText("");
+    }, 700);
+  };
+
   const generatePdf = async (opts?: {
     category?: string;
     overrideFileName?: string;
@@ -40,87 +53,127 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   }): Promise<{ blob: Blob; fileName: string }> => {
     if (!targetRef.current) throw new Error("targetRef is null");
 
+    const updateProgress = (value: number, text: string) => {
+      setProgress(Math.min(100, Math.max(0, Math.round(value))));
+      setProgressText(text);
+    };
+
+    updateProgress(3, "Preparando catálogo...");
+
     const EXPORT_WIDTH_PX = 1200;
     const PDF_MARGIN_MM = 10;
+
     const resolvedQuality = opts?.quality ?? quality;
-    const canvasScale = resolvedQuality === "alta" ? 2 : 1.5;
+
+    /**
+     * IMPORTANTE:
+     * Antes se capturaba TODO el catálogo en un solo canvas gigante.
+     * Con 100+ productos, eso puede producir un canvas blanco por límites
+     * del navegador/memoria. Ahora se captura página por página.
+     */
+    const canvasScale = resolvedQuality === "alta" ? 1.6 : 1.25;
+
     const jpegQuality =
-      resolvedQuality === "alta" ? (isIOS ? 0.8 : 0.88) : isIOS ? 0.6 : 0.72;
+      resolvedQuality === "alta" ? (isIOS ? 0.78 : 0.86) : isIOS ? 0.58 : 0.7;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
     const waitFrames = (n = 2) =>
-      new Array(n)
-        .fill(0)
-        .reduce(
-          (p) =>
-            p.then(
-              () => new Promise<void>((r) => requestAnimationFrame(() => r())),
-            ),
-          Promise.resolve(),
-        );
+      new Array(n).fill(0).reduce(
+        (p) =>
+          p.then(
+            () => new Promise<void>((r) => requestAnimationFrame(() => r())),
+          ),
+        Promise.resolve(),
+      );
 
-    const waitLoad = (img: HTMLImageElement) =>
-      img.complete && img.naturalWidth > 0
-        ? Promise.resolve()
-        : new Promise<void>((res) => {
-            img.onload = () => res();
-            img.onerror = () => res();
-          });
+    const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const waitLoad = (img: HTMLImageElement, timeoutMs = 12000) => {
+      if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+
+      return new Promise<void>((res) => {
+        let settled = false;
+
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          res();
+        };
+
+        const timer = setTimeout(done, timeoutMs);
+        img.onload = done;
+        img.onerror = done;
+      });
+    };
 
     const getPos = (el: HTMLElement, stop: HTMLElement) => {
       let top = 0;
       let left = 0;
       let cur: HTMLElement | null = el;
+
       while (cur && cur !== stop) {
         top += cur.offsetTop || 0;
         left += cur.offsetLeft || 0;
         cur = cur.offsetParent as HTMLElement | null;
       }
-      return { top, left, width: el.offsetWidth, height: el.offsetHeight };
+
+      return {
+        top,
+        left,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+      };
     };
 
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.left = "-99999px";
-    iframe.style.top = "0";
-    iframe.style.width = `${EXPORT_WIDTH_PX}px`;
-    iframe.style.height = "10px";
-    iframe.style.border = "none";
-    iframe.style.visibility = "hidden";
-    iframe.style.pointerEvents = "none";
-    iframe.style.zIndex = "-1";
-    document.body.appendChild(iframe);
+    const blobToDataUrl = (blob: Blob) =>
+      new Promise<string>((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result as string);
+        reader.onerror = () => rej(reader.error);
+        reader.readAsDataURL(blob);
+      });
+
+    const safeFetchBlob = async (src: string, timeoutMs = 12000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const resp = await fetch(src, {
+          mode: "cors",
+          signal: controller.signal,
+        });
+
+        if (!resp.ok) {
+          throw new Error(`No se pudo cargar imagen: ${resp.status}`);
+        }
+
+        return await resp.blob();
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.left = "-99999px";
+    container.style.top = "0";
+    container.style.width = `${EXPORT_WIDTH_PX}px`;
+    container.style.zIndex = "-9999";
+    container.style.pointerEvents = "none";
+    container.style.background = "#ffffff";
+    container.style.overflow = "visible";
+    document.body.appendChild(container);
 
     const objectUrlsToRevoke: string[] = [];
 
     try {
-      const iDoc = iframe.contentDocument!;
-      iDoc.open();
-      iDoc.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-      <meta name="viewport" content="width=${EXPORT_WIDTH_PX}">
-      </head><body style="margin:0;padding:0;background:#fff;width:${EXPORT_WIDTH_PX}px"></body></html>`);
-      iDoc.close();
-
-      const styleLoadPromises: Promise<void>[] = [];
-      Array.from(
-        document.querySelectorAll('link[rel="stylesheet"], style'),
-      ).forEach((node) => {
-        const imported = iDoc.importNode(node, true);
-        if ((node as HTMLLinkElement).rel === "stylesheet") {
-          styleLoadPromises.push(
-            new Promise<void>((res) => {
-              (imported as HTMLLinkElement).onload = () => res();
-              (imported as HTMLLinkElement).onerror = () => res();
-            }),
-          );
-        }
-        iDoc.head.appendChild(imported);
-      });
-      await Promise.all(styleLoadPromises);
+      updateProgress(6, "Duplicando vista del catálogo...");
 
       const original = targetRef.current;
       const clone = original.cloneNode(true) as HTMLElement;
+
       clone.classList.add("pdf-mode");
       clone.style.width = `${EXPORT_WIDTH_PX}px`;
       clone.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
@@ -132,38 +185,47 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       clone.style.height = "auto";
       clone.style.overflow = "visible";
       clone.style.position = "relative";
+      clone.style.visibility = "visible";
+      clone.style.opacity = "1";
 
-      iDoc.body.appendChild(clone);
+      container.appendChild(clone);
 
       clone.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
         (el as HTMLElement).style.display = "none";
       });
 
       if (opts?.category) {
+        updateProgress(9, "Filtrando categoría seleccionada...");
+
         const wanted = opts.category.trim().toLowerCase();
+
         (
           Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[]
         ).forEach((card) => {
           const cat = (
             (card.dataset.category || "").trim() || "Sin categoría"
           ).toLowerCase();
+
           if (cat !== wanted) card.remove();
         });
       }
 
+      updateProgress(12, "Organizando productos...");
+
       const productsGrid = clone.querySelector(
         ".products-grid",
       ) as HTMLElement | null;
+
       if (productsGrid) {
         productsGrid.style.cssText += `
-        display:grid !important;
-        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        column-gap:24px !important;
-        row-gap:32px !important;
-        align-items:start !important;
-        width:100% !important;
-        box-sizing:border-box !important;
-      `;
+          display:grid !important;
+          grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+          column-gap:24px !important;
+          row-gap:32px !important;
+          align-items:start !important;
+          width:100% !important;
+          box-sizing:border-box !important;
+        `;
       }
 
       (
@@ -195,44 +257,112 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         clone.querySelectorAll("img"),
       ) as HTMLImageElement[];
 
+      updateProgress(18, "Preparando imágenes...");
+
+      // Resolver imágenes desde imageDB
       await Promise.all(
         imgs.map(async (img) => {
           const id = img.dataset.imgid;
+
           img.setAttribute("loading", "eager");
           img.setAttribute("decoding", "sync");
           img.crossOrigin = "anonymous";
           img.referrerPolicy = "no-referrer";
+
           if (!img.src && id) {
             const url = await getImageUrl(id);
+
             if (url) {
               img.src = url;
-              if (url.startsWith("blob:")) objectUrlsToRevoke.push(url);
+
+              if (url.startsWith("blob:")) {
+                objectUrlsToRevoke.push(url);
+              }
             }
           }
         }),
       );
 
-      await Promise.all(imgs.map(waitLoad));
+      updateProgress(25, "Cargando imágenes del catálogo...");
 
-      await Promise.all(
-        imgs.map(async (img) => {
-          if (img.naturalWidth > 0) return;
-          const src = img.getAttribute("src") || "";
-          if (!src || src.startsWith("data:") || src.startsWith("blob:"))
-            return;
-          try {
-            const resp = await fetch(src, { mode: "cors" });
-            const blob = await resp.blob();
-            const objUrl = URL.createObjectURL(blob);
-            objectUrlsToRevoke.push(objUrl);
-            img.crossOrigin = "anonymous";
-            img.src = objUrl;
-            await waitLoad(img);
-          } catch {
-            /* skip */
-          }
-        }),
-      );
+      await Promise.all(imgs.map((img) => waitLoad(img)));
+
+      updateProgress(35, "Validando imágenes...");
+
+      // Reintentar imágenes que no cargaron
+      const failedImgs = imgs.filter((img) => img.naturalWidth === 0);
+      const BATCH_SIZE = 8;
+
+      for (let i = 0; i < failedImgs.length; i += BATCH_SIZE) {
+        const batch = failedImgs.slice(i, i + BATCH_SIZE);
+
+        const currentProgress =
+          35 + Math.min(8, ((i + batch.length) / Math.max(1, failedImgs.length)) * 8);
+
+        updateProgress(currentProgress, "Reintentando imágenes pendientes...");
+
+        await Promise.all(
+          batch.map(async (img) => {
+            const src = img.getAttribute("src") || "";
+
+            if (!src || src.startsWith("data:") || src.startsWith("blob:")) {
+              return;
+            }
+
+            try {
+              const blob = await safeFetchBlob(src, 12000);
+              const objUrl = URL.createObjectURL(blob);
+              objectUrlsToRevoke.push(objUrl);
+              img.crossOrigin = "anonymous";
+              img.src = objUrl;
+              await waitLoad(img, 12000);
+            } catch {
+              // No bloquear PDF por una imagen fallida
+            }
+          }),
+        );
+      }
+
+      updateProgress(45, "Procesando imágenes para PDF...");
+
+      // Convertir imágenes a data URL para evitar problemas CORS/canvas
+      const CONVERT_BATCH = 8;
+
+      for (let i = 0; i < imgs.length; i += CONVERT_BATCH) {
+        const batch = imgs.slice(i, i + CONVERT_BATCH);
+
+        const currentProgress =
+          45 + Math.min(15, ((i + batch.length) / Math.max(1, imgs.length)) * 15);
+
+        updateProgress(currentProgress, "Optimizando imágenes...");
+
+        await Promise.all(
+          batch.map(async (img) => {
+            const src = img.getAttribute("src") || "";
+
+            if (!src || src.startsWith("data:")) return;
+
+            try {
+              let blob: Blob;
+
+              if (src.startsWith("blob:")) {
+                const resp = await fetch(src);
+                blob = await resp.blob();
+              } else {
+                blob = await safeFetchBlob(src, 10000);
+              }
+
+              const dataUrl = await blobToDataUrl(blob);
+              img.src = dataUrl;
+              await waitLoad(img, 5000);
+            } catch {
+              // Mantener src original si falla la conversión
+            }
+          }),
+        );
+      }
+
+      updateProgress(60, "Ajustando diseño del PDF...");
 
       imgs.forEach((img) => {
         img.style.width = "auto";
@@ -249,73 +379,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
       ).forEach((media) => {
         media.style.aspectRatio = "4 / 3.5";
+        media.style.height = "auto";
         media.style.minHeight = "230px";
         media.style.maxHeight = "280px";
       });
 
-      await waitFrames(4);
-      if ("fonts" in iDoc) {
-        try {
-          await (iDoc as any).fonts.ready;
-        } catch {}
-      }
-      if (iframe.contentWindow && "fonts" in iframe.contentWindow) {
-        try {
-          await (iframe.contentWindow as any).fonts.ready;
-        } catch {}
-      }
-      await waitFrames(6);
-
-      const fullHeight = clone.scrollHeight || clone.offsetHeight;
-
-      iframe.style.height = `${fullHeight + 20}px`;
-      await waitFrames(2);
-
-      type LinkArea = {
-        url: string;
-        left: number;
-        top: number;
-        width: number;
-        height: number;
-      };
-      const linkAreasCss: LinkArea[] = [];
-
-      const pushLink = (el: HTMLElement, url: string) => {
-        if (!url || url === "#") return;
-        const pos = getPos(el, clone);
-        if (pos.width <= 0 || pos.height <= 0) return;
-        linkAreasCss.push({ url, ...pos });
-      };
-
-      const waFromDom =
-        clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
-      const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
-
-      (
-        Array.from(
-          clone.querySelectorAll('[data-pdf-link="product"]'),
-        ) as HTMLElement[]
-      ).forEach((el) => {
-        const name = (el.dataset.productName || "").trim();
-        const price = (el.dataset.productPrice || "").trim();
-        if (!name) return;
-        let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
-        if (businessWa) {
-          const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(Number(price || 0))}`;
-          url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
-        }
-        if (url && url !== "#") pushLink(el, url);
-      });
-
-      (
-        Array.from(clone.querySelectorAll("a[href]")) as HTMLAnchorElement[]
-      ).forEach((a) => {
-        const href = (a.getAttribute("href") || "").trim();
-        if (!href || href === "#") return;
-        if (a.matches('[data-pdf-link="product"]')) return;
-        pushLink(a, href);
-      });
-
+      // Badges y elementos inline
       clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
         const el_ = el as HTMLElement;
         el_.style.display = "flex";
@@ -325,7 +394,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
         el_.style.height = "30px";
-        const span = el_.querySelector("span");
+
+        const span = el_.querySelector("span") as HTMLElement | null;
+
         if (span) {
           span.style.display = "flex";
           span.style.alignItems = "center";
@@ -361,7 +432,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
         el_.style.height = "28px";
-        const span = el_.querySelector("span");
+
+        const span = el_.querySelector("span") as HTMLElement | null;
+
         if (span) {
           span.style.display = "flex";
           span.style.alignItems = "center";
@@ -385,7 +458,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.height = "40px";
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
+
         const innerSpan = el_.querySelector("span") as HTMLElement | null;
+
         if (innerSpan) {
           innerSpan.style.display = "flex";
           innerSpan.style.alignItems = "center";
@@ -399,31 +474,120 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
       });
 
-      const iWin = iframe.contentWindow!;
-      const canvas = await html2canvas(clone, {
-        scale: canvasScale,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: "#ffffff",
-        logging: false,
-        width: EXPORT_WIDTH_PX,
-        windowWidth: EXPORT_WIDTH_PX,
-        windowHeight: fullHeight,
-        scrollX: -(iWin.scrollX ?? 0),
-        scrollY: -(iWin.scrollY ?? 0),
+      updateProgress(65, "Esperando fuentes y estilos...");
+
+      await waitFrames(10);
+
+      if ("fonts" in document) {
+        try {
+          await (document as any).fonts.ready;
+        } catch {
+          // Ignorar si falla fonts.ready
+        }
+      }
+
+      if (imgs.length > 30) {
+        await waitMs(Math.min(2500, imgs.length * 10));
+      }
+
+      await waitFrames(8);
+
+      void clone.offsetHeight;
+      void clone.getBoundingClientRect();
+
+      await waitFrames(4);
+
+      const fullHeight = clone.scrollHeight || clone.offsetHeight;
+      container.style.height = `${fullHeight + 20}px`;
+
+      await waitFrames(4);
+
+      updateProgress(70, "Preparando links clickeables...");
+
+      // Recolectar links
+      type LinkArea = {
+        url: string;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      };
+
+      const linkAreasCss: LinkArea[] = [];
+
+      const pushLink = (el: HTMLElement, url: string) => {
+        if (!url || url === "#") return;
+
+        const pos = getPos(el, clone);
+
+        if (pos.width <= 0 || pos.height <= 0) return;
+
+        linkAreasCss.push({
+          url,
+          ...pos,
+        });
+      };
+
+      const waFromDom =
+        clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
+
+      const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
+
+      (
+        Array.from(
+          clone.querySelectorAll('[data-pdf-link="product"]'),
+        ) as HTMLElement[]
+      ).forEach((el) => {
+        const name = (el.dataset.productName || "").trim();
+        const price = (el.dataset.productPrice || "").trim();
+
+        if (!name) return;
+
+        let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
+
+        if (businessWa) {
+          const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(
+            Number(price || 0),
+          )}`;
+
+          url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(
+            msg,
+          )}`;
+        }
+
+        if (url && url !== "#") {
+          pushLink(el, url);
+        }
       });
 
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      (
+        Array.from(clone.querySelectorAll("a[href]")) as HTMLAnchorElement[]
+      ).forEach((a) => {
+        const href = (a.getAttribute("href") || "").trim();
+
+        if (!href || href === "#") return;
+        if (a.matches('[data-pdf-link="product"]')) return;
+
+        pushLink(a, href);
+      });
+
+      updateProgress(73, "Creando documento PDF...");
+
+      // Crear PDF
+      const pdf = new jsPDF({
+        orientation: "p",
+        unit: "mm",
+        format: "a4",
+      });
+
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
+
       const usableWmm = pageW - PDF_MARGIN_MM * 2;
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
-      const pxPerMm = (EXPORT_WIDTH_PX * canvasScale) / usableWmm;
-      const pageHeightPx = Math.floor(usableHmm * pxPerMm);
-
-      const domTotalHeight = fullHeight || 1;
-      const scaleY = canvas.height / domTotalHeight;
+      const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
+      const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm);
 
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf"),
@@ -431,46 +595,113 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       const bpSet = new Set<number>();
       bpSet.add(0);
-      bpSet.add(canvas.height);
+      bpSet.add(fullHeight);
 
       cards.forEach((card) => {
         const pos = getPos(card, clone);
-        const cardTopCanvas = Math.max(0, Math.floor(pos.top * scaleY) - 4);
-        const cardBotCanvas = Math.min(
-          canvas.height,
-          Math.floor((pos.top + pos.height) * scaleY) + 8,
+
+        const cardTop = Math.max(0, Math.floor(pos.top) - 6);
+        const cardBottom = Math.min(
+          fullHeight,
+          Math.floor(pos.top + pos.height) + 10,
         );
-        bpSet.add(cardTopCanvas);
-        bpSet.add(cardBotCanvas);
+
+        bpSet.add(cardTop);
+        bpSet.add(cardBottom);
       });
 
       const breakpoints = Array.from(bpSet).sort((a, b) => a - b);
 
       const pickBreak = (from: number, limit: number): number => {
         let chosen = -1;
+
         for (const v of breakpoints) {
-          if (v <= limit && v > from) chosen = v;
+          if (v <= limit && v > from) {
+            chosen = v;
+          }
+
           if (v > limit) break;
         }
+
         return chosen;
+      };
+
+      const renderPageCanvas = async (
+        source: HTMLElement,
+        y: number,
+        height: number,
+      ) => {
+        /**
+         * Captura SOLO una página.
+         * Esto evita el canvas gigante que causaba PDFs en blanco.
+         */
+        return await html2canvas(source, {
+          scale: canvasScale,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+          width: EXPORT_WIDTH_PX,
+          height,
+          windowWidth: EXPORT_WIDTH_PX,
+          windowHeight: height,
+          x: 0,
+          y,
+          scrollX: 0,
+          scrollY: 0,
+          removeContainer: true,
+          onclone: (_clonedDoc, clonedEl) => {
+            clonedEl.style.visibility = "visible";
+            clonedEl.style.opacity = "1";
+            clonedEl.style.background = "#ffffff";
+
+            Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
+              const htmlEl = el as HTMLElement;
+
+              if (!htmlEl.style) return;
+
+              if (htmlEl.style.visibility === "hidden") {
+                htmlEl.style.visibility = "visible";
+              }
+
+              if (htmlEl.style.opacity === "0") {
+                htmlEl.style.opacity = "1";
+              }
+
+              htmlEl.style.animation = "none";
+              htmlEl.style.transition = "none";
+            });
+          },
+        });
       };
 
       let offsetY = 0;
       let pageIndex = 0;
-      const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
+      const totalPagesEstimate = Math.max(
+        1,
+        Math.ceil(fullHeight / pageHeightCssPx),
+      );
 
-      while (offsetY < canvas.height) {
-        const idealEnd = offsetY + pageHeightPx;
+      updateProgress(
+        75,
+        `Renderizando página 1 de ${totalPagesEstimate}...`,
+      );
+
+      while (offsetY < fullHeight) {
+        const idealEnd = offsetY + pageHeightCssPx;
         let endY = pickBreak(offsetY, idealEnd);
 
-        if (endY === -1) {
+        if (endY === -1 || endY <= offsetY) {
           let breakBefore = -1;
+
           for (const card of cards) {
             const pos = getPos(card, clone);
-            const cardTop = Math.max(0, Math.floor(pos.top * scaleY) - 4);
-            const cardBot = Math.floor((pos.top + pos.height) * scaleY);
+            const cardTop = Math.max(0, Math.floor(pos.top) - 6);
+            const cardBot = Math.floor(pos.top + pos.height);
+
             if (cardTop < idealEnd && cardBot > idealEnd) {
               const candidate = Math.max(offsetY + 1, cardTop);
+
               if (
                 candidate > offsetY &&
                 (breakBefore === -1 || candidate < breakBefore)
@@ -479,36 +710,31 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               }
             }
           }
+
           endY =
             breakBefore !== -1
               ? breakBefore
-              : Math.min(idealEnd, canvas.height);
+              : Math.min(idealEnd, fullHeight);
         }
 
-        const sliceH = endY - offsetY;
-        if (sliceH <= 0) break;
+        const sliceH = Math.max(1, Math.floor(endY - offsetY));
 
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceH;
-        const ctx = pageCanvas.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(
-          canvas,
-          0,
-          offsetY,
-          canvas.width,
-          sliceH,
-          0,
-          0,
-          canvas.width,
-          sliceH,
+        await waitFrames(2);
+
+        updateProgress(
+          75 + (pageIndex / totalPagesEstimate) * 20,
+          `Renderizando página ${pageIndex + 1} de ${totalPagesEstimate}...`,
         );
 
+        const pageCanvas = await renderPageCanvas(clone, offsetY, sliceH);
+
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
-        const sliceHmm = sliceH / pxPerMm;
-        if (pageIndex > 0) pdf.addPage();
+        const sliceHmm = sliceH / cssPxPerMm;
+
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+
         pdf.addImage(
           imgData,
           "JPEG",
@@ -520,12 +746,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           "FAST",
         );
 
-        const pageStartDom = offsetY / scaleY;
-        const pageEndDom = endY / scaleY;
+        const pageStartDom = offsetY;
+        const pageEndDom = endY;
+
         for (const la of linkAreasCss) {
           const visTop = Math.max(la.top, pageStartDom);
           const visBot = Math.min(la.top + la.height, pageEndDom);
+
           if (visBot <= visTop) continue;
+
           pdf.link(
             PDF_MARGIN_MM + la.left / cssPxPerMm,
             PDF_MARGIN_MM + (visTop - pageStartDom) / cssPxPerMm,
@@ -535,9 +764,22 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           );
         }
 
+        // Liberar memoria del canvas de la página
+        pageCanvas.width = 1;
+        pageCanvas.height = 1;
+
         offsetY = endY;
         pageIndex++;
+
+        updateProgress(
+          75 + (pageIndex / totalPagesEstimate) * 20,
+          `Página ${pageIndex} de ${totalPagesEstimate} lista...`,
+        );
+
+        await waitFrames(1);
       }
+
+      updateProgress(97, "Finalizando archivo...");
 
       const safeFileName =
         (opts?.overrideFileName || fileName)
@@ -545,74 +787,100 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           .replace(/\s+/g, "-")
           .toLowerCase() || "catalogo";
 
-      return { blob: pdf.output("blob"), fileName: `${safeFileName}.pdf` };
+      updateProgress(99, "Preparando descarga...");
+
+      return {
+        blob: pdf.output("blob"),
+        fileName: `${safeFileName}.pdf`,
+      };
     } finally {
       objectUrlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
-      iframe.remove();
+      container.remove();
     }
   };
 
-  // ── Descarga el blob como archivo ────────────────────────────────────────
   const downloadBlob = (blob: Blob, outName: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
+
     a.href = url;
     a.download = outName;
+
     document.body.appendChild(a);
     a.click();
     a.remove();
+
     URL.revokeObjectURL(url);
   };
 
   const handleDownloadPdfAll = async () => {
     try {
       setLoading(true);
+      setProgress(1);
+      setProgressText("Iniciando exportación...");
+
       const { blob, fileName: outName } = await generatePdf({
         overrideFileName: fileName,
         quality,
       });
+
+      setProgress(100);
+      setProgressText("Descargando PDF...");
+
       downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF.");
     } finally {
-      setLoading(false);
+      resetProgressLater();
     }
   };
 
   const handleDownloadPdfSelectedCategory = async () => {
     if (selectedCategory === "__ALL__") return;
+
     try {
       setLoading(true);
+      setProgress(1);
+      setProgressText("Iniciando exportación por categoría...");
+
       const outBase = `${fileName}-${slug(selectedCategory)}`;
+
       const { blob, fileName: outName } = await generatePdf({
         category: selectedCategory,
         overrideFileName: outBase,
         quality,
       });
+
+      setProgress(100);
+      setProgressText("Descargando PDF...");
+
       downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF por categoría.");
     } finally {
-      setLoading(false);
+      resetProgressLater();
     }
   };
 
-  // ── Compartir WhatsApp ────────────────────────────────────────────────────
-  // navigator.share() pierde el contexto de gesto del usuario tras un await
-  // largo. Estrategia: intentar share nativo en mobile; si falla o es desktop,
-  // descargar el PDF y mostrar modal con instrucciones paso a paso.
   const handleShareWhatsApp = async () => {
     try {
       setLoading(true);
-      const { blob, fileName: fn } = await generatePdf({ quality });
-      setSharedFileName(fn);
+      setProgress(1);
+      setProgressText("Preparando PDF para compartir...");
 
-      // En mobile intentamos primero el share nativo (abre el sheet de iOS/Android
-      // donde el usuario puede elegir WhatsApp directamente con el archivo adjunto)
+      const { blob, fileName: fn } = await generatePdf({ quality });
+
+      setSharedFileName(fn);
+      setProgress(100);
+      setProgressText("PDF listo para compartir...");
+
       if (isMobile) {
-        const file = new File([blob], fn, { type: "application/pdf" });
+        const file = new File([blob], fn, {
+          type: "application/pdf",
+        });
+
         const canShareFile =
           typeof navigator.share === "function" &&
           typeof navigator.canShare === "function" &&
@@ -625,30 +893,63 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               text: "Te comparto el catálogo en PDF 📄",
               files: [file],
             });
-            return; // ✅ El usuario eligió WhatsApp desde el share sheet nativo
+
+            return;
           } catch (shareErr: any) {
-            if (shareErr?.name === "AbortError") return; // Canceló voluntariamente
-            // Falló por el contexto de gesto → caemos al fallback
+            if (shareErr?.name === "AbortError") return;
+
             console.warn("share() falló, usando fallback:", shareErr);
           }
         }
       }
 
-      // Fallback para desktop y mobile sin share nativo:
-      // descargar el PDF y mostrar modal con instrucciones
+      setProgressText("Descargando PDF...");
       downloadBlob(blob, fn);
       setShowShareInstructions(true);
     } catch (error) {
       console.error(error);
       alert("Error generando el PDF. Por favor intenta de nuevo.");
     } finally {
-      setLoading(false);
+      resetProgressLater();
     }
   };
 
   return (
     <>
-      {/* ── Modal de instrucciones para compartir por WhatsApp ── */}
+      {/* Overlay de progreso */}
+      {loading && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 px-5">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="mb-4">
+              <p className="text-base font-bold text-slate-800">
+                Generando catálogo PDF
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {progressText || "Preparando archivo..."}
+              </p>
+            </div>
+
+            <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <span className="text-xs text-slate-400">
+                No cierres esta ventana
+              </span>
+
+              <span className="text-sm font-semibold text-slate-700">
+                {progress}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showShareInstructions && (
         <div
           className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 px-4 pb-8"
@@ -658,15 +959,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-xl">
                 ✅
               </div>
+
               <div>
                 <p className="font-bold text-slate-800 text-base leading-tight">
                   ¡PDF listo y descargado!
                 </p>
+
                 <p className="text-xs text-slate-400">{sharedFileName}</p>
               </div>
             </div>
@@ -675,11 +977,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               Sigue estos pasos para enviarlo por WhatsApp:
             </p>
 
-            {/* Pasos */}
             <ol className="space-y-3 mb-5">
               {[
                 { n: "1", text: "Abre WhatsApp en tu dispositivo" },
-                { n: "2", text: "Elige el contacto o grupo al que quieres enviar" },
+                {
+                  n: "2",
+                  text: "Elige el contacto o grupo al que quieres enviar",
+                },
                 {
                   n: "3",
                   text: (
@@ -707,12 +1011,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">
                     {n}
                   </span>
+
                   <span className="text-sm text-slate-700">{text}</span>
                 </li>
               ))}
             </ol>
 
-            {/* Botones */}
             <button
               onClick={() => {
                 setShowShareInstructions(false);
@@ -725,6 +1029,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             >
               Abrir WhatsApp →
             </button>
+
             <button
               onClick={() => setShowShareInstructions(false)}
               className="w-full h-10 rounded-xl text-sm text-slate-400 hover:text-slate-600 transition"
@@ -735,39 +1040,46 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         </div>
       )}
 
-      {/* ── Barra de exportación fija en la parte inferior ── */}
       <div
         data-hide-on-pdf="true"
         className="fixed inset-x-0 bottom-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3"
       >
         <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white/85 backdrop-blur shadow-lg p-2">
           <div className="flex flex-col gap-2">
-            {/* Quality toggle */}
             <div className="flex items-center justify-between px-1">
               <span className="text-xs text-slate-500 font-medium">
                 Calidad del PDF
               </span>
+
               <div className="flex rounded-lg overflow-hidden border border-black/10 text-xs font-semibold">
                 <button
                   onClick={() => setQuality("normal")}
                   disabled={loading}
-                  className={`px-3 py-1.5 transition ${quality === "normal" ? "bg-slate-800 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                  className={`px-3 py-1.5 transition ${quality === "normal"
+                      ? "bg-slate-800 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
                 >
                   Normal
                 </button>
+
                 <button
                   onClick={() => setQuality("alta")}
                   disabled={loading}
-                  className={`px-3 py-1.5 transition ${quality === "alta" ? "bg-slate-800 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                  className={`px-3 py-1.5 transition ${quality === "alta"
+                      ? "bg-slate-800 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
                 >
                   Alta
                 </button>
               </div>
             </div>
+
             <p className="text-[10px] text-slate-400 px-1 -mt-1">
               {quality === "normal"
-                ? "Archivo más liviano (~1–3 MB) — ideal para WhatsApp"
-                : "Mayor resolución (~4–8 MB) — mejor para imprimir"}
+                ? "Archivo más liviano — ideal para WhatsApp"
+                : "Mayor resolución — mejor para imprimir"}
             </p>
 
             <div className="flex gap-2">
@@ -778,6 +1090,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               >
                 {loading ? "Preparando…" : "Compartir WhatsApp"}
               </button>
+
               <button
                 onClick={handleDownloadPdfAll}
                 disabled={loading}
@@ -795,12 +1108,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                 disabled={loading}
               >
                 <option value="__ALL__">Selecciona categoría…</option>
+
                 {categories.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
                 ))}
               </select>
+
               <button
                 onClick={handleDownloadPdfSelectedCategory}
                 disabled={loading || selectedCategory === "__ALL__"}
