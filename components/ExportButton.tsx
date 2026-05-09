@@ -65,7 +65,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     const resolvedQuality = opts?.quality ?? quality;
 
-    const canvasScale = resolvedQuality === "alta" ? 1.6 : 1.25;
+    // FIX 1: canvasScale reducido en iOS para evitar que Safari mate el proceso por canvas demasiado grande
+    const canvasScale = isIOS
+      ? (resolvedQuality === "alta" ? 1.0 : 0.85)
+      : (resolvedQuality === "alta" ? 1.6 : 1.25);
 
     const jpegQuality =
       resolvedQuality === "alta" ? (isIOS ? 0.78 : 0.86) : isIOS ? 0.58 : 0.7;
@@ -601,12 +604,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       ) => {
         const pageGrid = page.querySelector(".products-grid") as HTMLElement | null;
 
-        /**
-         * Opción recomendada:
-         * Si puedes marcar tu header/footer en el JSX, usa:
-         * data-pdf-header="true"
-         * data-pdf-footer="true"
-         */
         page
           .querySelectorAll(
             '[data-pdf-header="true"], .catalog-header, .pdf-header, header',
@@ -623,11 +620,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             (el as HTMLElement).style.display = includeFooter ? "" : "none";
           });
 
-        /**
-         * Fallback estructural:
-         * Si no hay clases/data-attributes, ocultamos bloques antes/después
-         * del grid según corresponda.
-         */
         if (pageGrid) {
           let current: HTMLElement | null = pageGrid;
 
@@ -655,10 +647,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       };
 
       const makePage = (includeHeader: boolean) => {
-        /**
-         * Creamos la página desde el mismo clon del catálogo.
-         * Así se conserva el header, paddings, ancho y estilos originales.
-         */
         const page = clone.cloneNode(true) as HTMLElement;
 
         page.style.position = "absolute";
@@ -706,12 +694,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         background:#ffffff !important;
       `;
 
-        /**
-         * Por defecto, al crear la página:
-         * - header depende de includeHeader.
-         * - footer se oculta temporalmente y se define después, cuando ya sabemos
-         *   si esta será la última página.
-         */
         controlHeaderFooter(page, includeHeader, false);
 
         document.body.appendChild(page);
@@ -722,16 +704,25 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         };
       };
 
-      const renderDomPageCanvas = async (pageEl: HTMLElement) => {
+      // FIX 2: renderDomPageCanvas con rescalado de seguridad para Safari
+      // Safari tiene un límite duro de ~16 megapíxeles por canvas.
+      // Si el canvas resultante lo supera, lo reducimos antes de pasarlo a jsPDF.
+      const renderDomPageCanvas = async (pageEl: HTMLElement): Promise<HTMLCanvasElement> => {
         await waitFrames(2);
 
-        return await html2canvas(pageEl, {
+        // FIX 3: en iOS limitamos la altura capturada para no superar el límite de memoria
+        const captureHeight = isIOS
+          ? Math.min(pageEl.scrollHeight || pageEl.offsetHeight, 8000)
+          : undefined;
+
+        const canvas = await html2canvas(pageEl, {
           scale: canvasScale,
           useCORS: true,
           allowTaint: true,
           backgroundColor: "#ffffff",
           logging: false,
           width: EXPORT_WIDTH_PX,
+          height: captureHeight,
           windowWidth: EXPORT_WIDTH_PX,
           scrollX: 0,
           scrollY: 0,
@@ -759,6 +750,32 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             });
           },
         });
+
+        // Si el canvas supera ~16MP (límite Safari), lo reducimos proporcionalmente
+        if (isIOS) {
+          const MAX_SAFARI_PX = 12_000_000;
+          const totalPx = canvas.width * canvas.height;
+
+          if (totalPx > MAX_SAFARI_PX) {
+            const ratio = Math.sqrt(MAX_SAFARI_PX / totalPx);
+            const smallCanvas = document.createElement("canvas");
+            smallCanvas.width = Math.floor(canvas.width * ratio);
+            smallCanvas.height = Math.floor(canvas.height * ratio);
+            const ctx = smallCanvas.getContext("2d");
+
+            if (ctx) {
+              ctx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
+            }
+
+            // Liberar memoria del canvas original inmediatamente
+            canvas.width = 1;
+            canvas.height = 1;
+
+            return smallCanvas;
+          }
+        }
+
+        return canvas;
       };
 
       const collectPageLinks = (page: HTMLElement): LinkArea[] => {
@@ -853,11 +870,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const isLastPage = rowIndex >= rows.length;
 
-        /**
-         * Aquí se aplica el comportamiento final:
-         * - Header solo en la página 1.
-         * - Footer solo en la última página.
-         */
         controlHeaderFooter(page, pageIndex === 0, isLastPage);
 
         await waitFrames(2);
@@ -867,9 +879,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           `Renderizando página ${pageIndex + 1}...`,
         );
 
+        // FIX 4: pausa entre páginas en iOS para que Safari libere memoria antes del siguiente render
+        if (isIOS) await waitMs(400);
+
         const pageCanvas = await renderDomPageCanvas(page);
 
-        const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
+        // FIX 4 (cont): calidad JPEG ligeramente menor en iOS para reducir peso del dataUrl
+        const iosJpegQuality = isIOS ? Math.min(jpegQuality, 0.55) : jpegQuality;
+        const imgData = pageCanvas.toDataURL("image/jpeg", iosJpegQuality);
+
         const pageHmm = Math.min(
           usableHmm,
           pageCanvas.height / canvasScale / cssPxPerMm,
