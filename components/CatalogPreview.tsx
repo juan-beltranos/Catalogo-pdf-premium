@@ -82,7 +82,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
       <div
         ref={previewRef}
         id="catalog-capture-area"
-        className={`bg-white w-full w-[800px] min-w-[800px] overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
+        className={`bg-white w-full w-[800px] min-w-[800px]overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
           }`}
         style={{
           minHeight: '1120px',
@@ -93,6 +93,26 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   .product-pdf {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  @media print {
+    .product-pdf {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+  }
+
+  @media print {
+    .products-grid {
+      display: block;
+    }
+
+    .product-pdf {
+      width: 48%;
+      display: inline-block;
+      vertical-align: top;
+      margin-bottom: 24px;
+    }
   }
 
   .catalog-html p { margin: 0.25rem 0; font-size: 13px; }
@@ -186,83 +206,13 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     line-height: 1 !important;
   }
 
+  /* ajuste leve solo para que el header no se vea más pequeño al exportar */
   .pdf-mode h1 {
     font-size: 1.08em !important;
   }
 
   .pdf-mode [data-store-whatsapp="true"] {
     font-size: 1.04em !important;
-  }
-
-  @media print {
-    html,
-    body {
-      background: #ffffff !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-
-    body * {
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-
-    [data-hide-on-pdf="true"],
-    .ios-print-hidden-category {
-      display: none !important;
-    }
-
-    #catalog-capture-area {
-      width: 100% !important;
-      min-width: 0 !important;
-      max-width: 100% !important;
-      margin: 0 !important;
-      box-shadow: none !important;
-      border-radius: 0 !important;
-      overflow: visible !important;
-      background: #ffffff !important;
-    }
-
-    .products-grid {
-      display: grid !important;
-      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-      column-gap: 18px !important;
-      row-gap: 24px !important;
-      align-items: start !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-    }
-
-    .product-pdf {
-      display: block !important;
-      width: auto !important;
-      break-inside: avoid !important;
-      page-break-inside: avoid !important;
-      -webkit-column-break-inside: avoid !important;
-      text-decoration: none !important;
-      color: inherit !important;
-    }
-
-    .product-media {
-      break-inside: avoid !important;
-      page-break-inside: avoid !important;
-      overflow: hidden !important;
-    }
-
-    .product-media img,
-    img {
-      max-width: 100% !important;
-      height: auto !important;
-      object-fit: contain !important;
-      object-position: center !important;
-    }
-
-    a {
-      color: inherit !important;
-      text-decoration: none !important;
-    }
   }
 `}</style>
 
