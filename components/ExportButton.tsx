@@ -60,19 +60,26 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     updateProgress(3, "Preparando catálogo...");
 
-    // FIX iOS: ancho reducido en iPhone/iPad para que html2canvas no explote en memoria
-    const EXPORT_WIDTH_PX = isIOS ? 750 : 1200;
+    /**
+     * Fix Safari/iPhone:
+     * 1200px + scale alto puede bloquear html2canvas en iOS.
+     */
+    const EXPORT_WIDTH_PX = isIOS ? 850 : 1200;
     const PDF_MARGIN_MM = 10;
 
     const resolvedQuality = opts?.quality ?? quality;
 
-    // FIX iOS: scale reducido para evitar canvas gigantes en Safari
     const canvasScale = isIOS
-      ? (resolvedQuality === "alta" ? 1.0 : 0.85)
-      : (resolvedQuality === "alta" ? 1.6 : 1.25);
+      ? 1
+      : resolvedQuality === "alta"
+        ? 1.6
+        : 1.25;
 
-    const jpegQuality =
-      resolvedQuality === "alta" ? (isIOS ? 0.78 : 0.86) : isIOS ? 0.58 : 0.7;
+    const jpegQuality = isIOS
+      ? 0.55
+      : resolvedQuality === "alta"
+        ? 0.86
+        : 0.7;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -86,6 +93,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       );
 
     const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const withTimeout = <T,>(
+      promise: Promise<T>,
+      ms: number,
+      message: string,
+    ) => {
+      return Promise.race<T>([
+        promise,
+        new Promise<T>((_, reject) => {
+          setTimeout(() => reject(new Error(message)), ms);
+        }),
+      ]);
+    };
 
     const waitLoad = (img: HTMLImageElement, timeoutMs = 12000) => {
       if (img.complete && img.naturalWidth > 0) return Promise.resolve();
@@ -154,14 +174,21 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     };
 
     const container = document.createElement("div");
-    container.style.position = "absolute";
-    container.style.left = "-99999px";
+
+    /**
+     * Fix Safari/iPhone:
+     * Evitar left:-99999px porque en Safari puede congelar el render.
+     */
+    container.style.position = "fixed";
+    container.style.left = "0";
     container.style.top = "0";
+    container.style.transform = "translateX(-120vw)";
     container.style.width = `${EXPORT_WIDTH_PX}px`;
     container.style.zIndex = "-9999";
     container.style.pointerEvents = "none";
     container.style.background = "#ffffff";
     container.style.overflow = "visible";
+
     document.body.appendChild(container);
 
     const objectUrlsToRevoke: string[] = [];
@@ -230,15 +257,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
       ).forEach((media) => {
         media.style.aspectRatio = "unset";
-        media.style.height = "500px";
-        media.style.minHeight = "500px";
-        media.style.maxHeight = "500px";
+        media.style.height = isIOS ? "380px" : "500px";
+        media.style.minHeight = isIOS ? "380px" : "500px";
+        media.style.maxHeight = isIOS ? "380px" : "500px";
       });
 
       (
         Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = "28px";
+        el.style.fontSize = isIOS ? "24px" : "28px";
         el.style.lineHeight = "1.2";
       });
 
@@ -247,7 +274,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           clone.querySelectorAll(".product-pdf .catalog-html"),
         ) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = "18px";
+        el.style.fontSize = isIOS ? "16px" : "18px";
         el.style.lineHeight = "1.6";
       });
 
@@ -287,7 +314,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       updateProgress(35, "Validando imágenes...");
 
       const failedImgs = imgs.filter((img) => img.naturalWidth === 0);
-      const BATCH_SIZE = 8;
+      const BATCH_SIZE = isIOS ? 4 : 8;
 
       for (let i = 0; i < failedImgs.length; i += BATCH_SIZE) {
         const batch = failedImgs.slice(i, i + BATCH_SIZE);
@@ -310,12 +337,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             }
 
             try {
-              const blob = await safeFetchBlob(src, 12000);
+              const blob = await safeFetchBlob(src, isIOS ? 8000 : 12000);
               const objUrl = URL.createObjectURL(blob);
               objectUrlsToRevoke.push(objUrl);
               img.crossOrigin = "anonymous";
               img.src = objUrl;
-              await waitLoad(img, 12000);
+              await waitLoad(img, isIOS ? 8000 : 12000);
             } catch {
               // No bloquear PDF por una imagen fallida
             }
@@ -325,40 +352,51 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       updateProgress(45, "Procesando imágenes para PDF...");
 
-      const CONVERT_BATCH = 8;
+      /**
+       * Fix Safari/iPhone:
+       * En iOS NO convertimos todas las imágenes a dataURL porque puede consumir
+       * demasiada memoria y dejar html2canvas congelado en página 1.
+       */
+      if (!isIOS) {
+        const CONVERT_BATCH = 8;
 
-      for (let i = 0; i < imgs.length; i += CONVERT_BATCH) {
-        const batch = imgs.slice(i, i + CONVERT_BATCH);
+        for (let i = 0; i < imgs.length; i += CONVERT_BATCH) {
+          const batch = imgs.slice(i, i + CONVERT_BATCH);
 
-        const currentProgress =
-          45 + Math.min(15, ((i + batch.length) / Math.max(1, imgs.length)) * 15);
+          const currentProgress =
+            45 +
+            Math.min(15, ((i + batch.length) / Math.max(1, imgs.length)) * 15);
 
-        updateProgress(currentProgress, "Optimizando imágenes...");
+          updateProgress(currentProgress, "Optimizando imágenes...");
 
-        await Promise.all(
-          batch.map(async (img) => {
-            const src = img.getAttribute("src") || "";
+          await Promise.all(
+            batch.map(async (img) => {
+              const src = img.getAttribute("src") || "";
 
-            if (!src || src.startsWith("data:")) return;
+              if (!src || src.startsWith("data:")) return;
 
-            try {
-              let blob: Blob;
+              try {
+                let blob: Blob;
 
-              if (src.startsWith("blob:")) {
-                const resp = await fetch(src);
-                blob = await resp.blob();
-              } else {
-                blob = await safeFetchBlob(src, 10000);
+                if (src.startsWith("blob:")) {
+                  const resp = await fetch(src);
+                  blob = await resp.blob();
+                } else {
+                  blob = await safeFetchBlob(src, 10000);
+                }
+
+                const dataUrl = await blobToDataUrl(blob);
+                img.src = dataUrl;
+                await waitLoad(img, 5000);
+              } catch {
+                // Mantener src original si falla la conversión
               }
-
-              const dataUrl = await blobToDataUrl(blob);
-              img.src = dataUrl;
-              await waitLoad(img, 5000);
-            } catch {
-              // Mantener src original si falla la conversión
-            }
-          }),
-        );
+            }),
+          );
+        }
+      } else {
+        updateProgress(58, "Optimizando para Safari...");
+        await waitFrames(4);
       }
 
       updateProgress(60, "Ajustando diseño del PDF...");
@@ -379,8 +417,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       ).forEach((media) => {
         media.style.aspectRatio = "4 / 3.5";
         media.style.height = "auto";
-        media.style.minHeight = "230px";
-        media.style.maxHeight = "280px";
+        media.style.minHeight = isIOS ? "210px" : "230px";
+        media.style.maxHeight = isIOS ? "240px" : "280px";
         media.style.overflow = "hidden";
       });
 
@@ -486,7 +524,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       }
 
       if (imgs.length > 30) {
-        await waitMs(Math.min(2500, imgs.length * 10));
+        await waitMs(Math.min(isIOS ? 1500 : 2500, imgs.length * 10));
       }
 
       await waitFrames(8);
@@ -576,8 +614,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         if (media) {
           media.style.aspectRatio = "4 / 3.5";
           media.style.height = "auto";
-          media.style.minHeight = "230px";
-          media.style.maxHeight = "280px";
+          media.style.minHeight = isIOS ? "210px" : "230px";
+          media.style.maxHeight = isIOS ? "240px" : "280px";
           media.style.overflow = "hidden";
           media.style.display = "flex";
           media.style.alignItems = "center";
@@ -650,15 +688,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const makePage = (includeHeader: boolean) => {
         const page = clone.cloneNode(true) as HTMLElement;
 
-        page.style.position = "absolute";
-        page.style.left = "-99999px";
+        /**
+         * Fix Safari/iPhone:
+         * No usar left:-99999px.
+         */
+        page.style.position = "fixed";
+        page.style.left = "0";
         page.style.top = "0";
+        page.style.transform = "translateX(-120vw)";
         page.style.width = `${EXPORT_WIDTH_PX}px`;
         page.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
         page.style.background = "#ffffff";
         page.style.boxSizing = "border-box";
         page.style.margin = "0";
-        page.style.transform = "none";
         page.style.visibility = "visible";
         page.style.opacity = "1";
         page.style.overflow = "visible";
@@ -705,88 +747,54 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         };
       };
 
-      // FIX iOS: renderDomPageCanvas seguro para Safari
-      // — altura capturada limitada a 6000px
-      // — timeout de 30s para detectar cuelgues
-      // — rescalado si supera 10MP (límite seguro de WebKit)
-      const renderDomPageCanvas = async (pageEl: HTMLElement): Promise<HTMLCanvasElement> => {
+      const renderDomPageCanvas = async (pageEl: HTMLElement) => {
         await waitFrames(2);
 
-        const captureHeight = isIOS
-          ? Math.min(pageEl.scrollHeight || pageEl.offsetHeight, 6000)
-          : undefined;
+        return await withTimeout(
+          html2canvas(pageEl, {
+            scale: canvasScale,
+            useCORS: true,
 
-        const canvasPromise = html2canvas(pageEl, {
-          scale: canvasScale,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: "#ffffff",
-          logging: false,
-          width: EXPORT_WIDTH_PX,
-          windowWidth: EXPORT_WIDTH_PX,
-          ...(captureHeight !== undefined && { height: captureHeight }),
-          scrollX: 0,
-          scrollY: 0,
-          removeContainer: true,
-          onclone: (_clonedDoc, clonedEl) => {
-            clonedEl.style.visibility = "visible";
-            clonedEl.style.opacity = "1";
-            clonedEl.style.background = "#ffffff";
+            /**
+             * Fix Safari/iPhone:
+             * allowTaint true puede causar problemas al exportar el canvas.
+             */
+            allowTaint: false,
 
-            Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
-              const htmlEl = el as HTMLElement;
+            backgroundColor: "#ffffff",
+            logging: false,
+            width: EXPORT_WIDTH_PX,
+            windowWidth: EXPORT_WIDTH_PX,
+            scrollX: 0,
+            scrollY: 0,
+            removeContainer: true,
+            imageTimeout: isIOS ? 10000 : 15000,
+            onclone: (_clonedDoc, clonedEl) => {
+              clonedEl.style.visibility = "visible";
+              clonedEl.style.opacity = "1";
+              clonedEl.style.background = "#ffffff";
 
-              if (!htmlEl.style) return;
+              Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
+                const htmlEl = el as HTMLElement;
 
-              if (htmlEl.style.visibility === "hidden") {
-                htmlEl.style.visibility = "visible";
-              }
+                if (!htmlEl.style) return;
 
-              if (htmlEl.style.opacity === "0") {
-                htmlEl.style.opacity = "1";
-              }
+                if (htmlEl.style.visibility === "hidden") {
+                  htmlEl.style.visibility = "visible";
+                }
 
-              htmlEl.style.animation = "none";
-              htmlEl.style.transition = "none";
-            });
-          },
-        });
+                if (htmlEl.style.opacity === "0") {
+                  htmlEl.style.opacity = "1";
+                }
 
-        // Timeout de seguridad: si html2canvas se cuelga en Safari, lanzamos error claro
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Tiempo agotado al renderizar página (iOS)")),
-            30000,
-          ),
+                htmlEl.style.animation = "none";
+                htmlEl.style.transition = "none";
+              });
+            },
+          }),
+          isIOS ? 30000 : 60000,
+          "Safari tardó demasiado renderizando la página del PDF.",
         );
-
-        const canvas = await Promise.race([canvasPromise, timeoutPromise]);
-
-        // Rescalar si supera 10MP — límite seguro en WebKit
-        if (isIOS) {
-          const MAX_PX = 10_000_000;
-          const totalPx = canvas.width * canvas.height;
-
-          if (totalPx > MAX_PX) {
-            const ratio = Math.sqrt(MAX_PX / totalPx);
-            const small = document.createElement("canvas");
-            small.width = Math.floor(canvas.width * ratio);
-            small.height = Math.floor(canvas.height * ratio);
-            const ctx = small.getContext("2d");
-
-            if (ctx) {
-              ctx.drawImage(canvas, 0, 0, small.width, small.height);
-            }
-
-            // Liberar memoria del canvas original de inmediato
-            canvas.width = 1;
-            canvas.height = 1;
-
-            return small;
-          }
-        }
-
-        return canvas;
       };
 
       const collectPageLinks = (page: HTMLElement): LinkArea[] => {
@@ -890,15 +898,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           `Renderizando página ${pageIndex + 1}...`,
         );
 
-        // FIX iOS: pausa antes de cada render para que Safari libere memoria
-        if (isIOS) await waitMs(400);
-
         const pageCanvas = await renderDomPageCanvas(page);
 
-        // FIX iOS: calidad JPEG máx 55% para reducir peso del dataUrl en memoria
-        const finalJpegQuality = isIOS ? Math.min(jpegQuality, 0.55) : jpegQuality;
-        const imgData = pageCanvas.toDataURL("image/jpeg", finalJpegQuality);
-
+        const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
         const pageHmm = Math.min(
           usableHmm,
           pageCanvas.height / canvasScale / cssPxPerMm,
@@ -968,16 +970,23 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
   const downloadBlob = (blob: Blob, outName: string) => {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
 
+    const a = document.createElement("a");
     a.href = url;
     a.download = outName;
+    a.rel = "noopener";
+
+    if (isIOS) {
+      a.target = "_blank";
+    }
 
     document.body.appendChild(a);
     a.click();
     a.remove();
 
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60000);
   };
 
   const handleDownloadPdfAll = async () => {
@@ -997,8 +1006,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
-      const msg = error instanceof Error ? error.message : "Error desconocido";
-      alert(`Error generando PDF: ${msg}\n\nIntenta con calidad "Normal" si usas iPhone.`);
+      alert("Error generando/descargando PDF.");
     } finally {
       resetProgressLater();
     }
@@ -1026,8 +1034,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
-      const msg = error instanceof Error ? error.message : "Error desconocido";
-      alert(`Error generando PDF: ${msg}\n\nIntenta con calidad "Normal" si usas iPhone.`);
+      alert("Error generando/descargando PDF por categoría.");
     } finally {
       resetProgressLater();
     }
@@ -1077,8 +1084,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setShowShareInstructions(true);
     } catch (error) {
       console.error(error);
-      const msg = error instanceof Error ? error.message : "Error desconocido";
-      alert(`Error generando PDF: ${msg}\n\nIntenta con calidad "Normal" si usas iPhone.`);
+      alert("Error generando el PDF. Por favor intenta de nuevo.");
     } finally {
       resetProgressLater();
     }
