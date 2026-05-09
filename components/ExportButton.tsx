@@ -60,15 +60,26 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     updateProgress(3, "Preparando catálogo...");
 
-    const EXPORT_WIDTH_PX = 1200;
+    /**
+     * Safari iOS tiene límites más bajos de canvas/memoria.
+     * Por eso reducimos ancho, scale y calidad solo en iOS.
+     */
+    const EXPORT_WIDTH_PX = isIOS ? 800 : 1200;
     const PDF_MARGIN_MM = 10;
 
     const resolvedQuality = opts?.quality ?? quality;
 
-    const canvasScale = resolvedQuality === "alta" ? 1.6 : 1.25;
+    const canvasScale = isIOS
+      ? 0.85
+      : resolvedQuality === "alta"
+        ? 1.6
+        : 1.25;
 
-    const jpegQuality =
-      resolvedQuality === "alta" ? (isIOS ? 0.78 : 0.86) : isIOS ? 0.58 : 0.7;
+    const jpegQuality = isIOS
+      ? 0.55
+      : resolvedQuality === "alta"
+        ? 0.86
+        : 0.7;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -82,6 +93,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       );
 
     const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const withTimeout = <T,>(
+      promise: Promise<T>,
+      ms: number,
+      message: string,
+    ) => {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(message)), ms),
+        ),
+      ]);
+    };
 
     const waitLoad = (img: HTMLImageElement, timeoutMs = 12000) => {
       if (img.complete && img.naturalWidth > 0) return Promise.resolve();
@@ -150,14 +174,22 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     };
 
     const container = document.createElement("div");
-    container.style.position = "absolute";
-    container.style.left = "-99999px";
+
+    /**
+     * Importante para Safari iOS:
+     * no usar left:-99999px porque html2canvas puede quedarse colgado.
+     * Lo dejamos fijo, invisible detrás, pero dentro del viewport.
+     */
+    container.style.position = "fixed";
+    container.style.left = "0";
     container.style.top = "0";
     container.style.width = `${EXPORT_WIDTH_PX}px`;
-    container.style.zIndex = "-9999";
+    container.style.zIndex = "-1";
     container.style.pointerEvents = "none";
     container.style.background = "#ffffff";
     container.style.overflow = "visible";
+    container.style.opacity = "1";
+
     document.body.appendChild(container);
 
     const objectUrlsToRevoke: string[] = [];
@@ -226,15 +258,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
       ).forEach((media) => {
         media.style.aspectRatio = "unset";
-        media.style.height = "500px";
-        media.style.minHeight = "500px";
-        media.style.maxHeight = "500px";
+        media.style.height = isIOS ? "360px" : "500px";
+        media.style.minHeight = isIOS ? "360px" : "500px";
+        media.style.maxHeight = isIOS ? "360px" : "500px";
       });
 
       (
         Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = "28px";
+        el.style.fontSize = isIOS ? "24px" : "28px";
         el.style.lineHeight = "1.2";
       });
 
@@ -243,7 +275,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           clone.querySelectorAll(".product-pdf .catalog-html"),
         ) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = "18px";
+        el.style.fontSize = isIOS ? "16px" : "18px";
         el.style.lineHeight = "1.6";
       });
 
@@ -283,7 +315,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       updateProgress(35, "Validando imágenes...");
 
       const failedImgs = imgs.filter((img) => img.naturalWidth === 0);
-      const BATCH_SIZE = 8;
+      const BATCH_SIZE = isIOS ? 3 : 8;
 
       for (let i = 0; i < failedImgs.length; i += BATCH_SIZE) {
         const batch = failedImgs.slice(i, i + BATCH_SIZE);
@@ -317,11 +349,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             }
           }),
         );
+
+        if (isIOS) await waitMs(150);
       }
 
       updateProgress(45, "Procesando imágenes para PDF...");
 
-      const CONVERT_BATCH = 8;
+      const CONVERT_BATCH = isIOS ? 2 : 8;
 
       for (let i = 0; i < imgs.length; i += CONVERT_BATCH) {
         const batch = imgs.slice(i, i + CONVERT_BATCH);
@@ -355,6 +389,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             }
           }),
         );
+
+        if (isIOS) await waitMs(150);
       }
 
       updateProgress(60, "Ajustando diseño del PDF...");
@@ -375,8 +411,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       ).forEach((media) => {
         media.style.aspectRatio = "4 / 3.5";
         media.style.height = "auto";
-        media.style.minHeight = "230px";
-        media.style.maxHeight = "280px";
+        media.style.minHeight = isIOS ? "190px" : "230px";
+        media.style.maxHeight = isIOS ? "230px" : "280px";
         media.style.overflow = "hidden";
       });
 
@@ -482,7 +518,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       }
 
       if (imgs.length > 30) {
-        await waitMs(Math.min(2500, imgs.length * 10));
+        await waitMs(Math.min(isIOS ? 1800 : 2500, imgs.length * 10));
       }
 
       await waitFrames(8);
@@ -572,8 +608,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         if (media) {
           media.style.aspectRatio = "4 / 3.5";
           media.style.height = "auto";
-          media.style.minHeight = "230px";
-          media.style.maxHeight = "280px";
+          media.style.minHeight = isIOS ? "190px" : "230px";
+          media.style.maxHeight = isIOS ? "230px" : "280px";
           media.style.overflow = "hidden";
           media.style.display = "flex";
           media.style.alignItems = "center";
@@ -601,12 +637,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       ) => {
         const pageGrid = page.querySelector(".products-grid") as HTMLElement | null;
 
-        /**
-         * Opción recomendada:
-         * Si puedes marcar tu header/footer en el JSX, usa:
-         * data-pdf-header="true"
-         * data-pdf-footer="true"
-         */
         page
           .querySelectorAll(
             '[data-pdf-header="true"], .catalog-header, .pdf-header, header',
@@ -623,11 +653,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             (el as HTMLElement).style.display = includeFooter ? "" : "none";
           });
 
-        /**
-         * Fallback estructural:
-         * Si no hay clases/data-attributes, ocultamos bloques antes/después
-         * del grid según corresponda.
-         */
         if (pageGrid) {
           let current: HTMLElement | null = pageGrid;
 
@@ -655,14 +680,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       };
 
       const makePage = (includeHeader: boolean) => {
-        /**
-         * Creamos la página desde el mismo clon del catálogo.
-         * Así se conserva el header, paddings, ancho y estilos originales.
-         */
         const page = clone.cloneNode(true) as HTMLElement;
 
-        page.style.position = "absolute";
-        page.style.left = "-99999px";
+        /**
+         * Safari iOS: no mover la página a -99999px.
+         */
+        page.style.position = "fixed";
+        page.style.left = "0";
         page.style.top = "0";
         page.style.width = `${EXPORT_WIDTH_PX}px`;
         page.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
@@ -673,7 +697,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         page.style.visibility = "visible";
         page.style.opacity = "1";
         page.style.overflow = "visible";
-        page.style.zIndex = "-9999";
+        page.style.zIndex = "-1";
         page.style.pointerEvents = "none";
 
         page.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
@@ -706,12 +730,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         background:#ffffff !important;
       `;
 
-        /**
-         * Por defecto, al crear la página:
-         * - header depende de includeHeader.
-         * - footer se oculta temporalmente y se define después, cuando ya sabemos
-         *   si esta será la última página.
-         */
         controlHeaderFooter(page, includeHeader, false);
 
         document.body.appendChild(page);
@@ -728,7 +746,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         return await html2canvas(pageEl, {
           scale: canvasScale,
           useCORS: true,
-          allowTaint: true,
+          allowTaint: false,
           backgroundColor: "#ffffff",
           logging: false,
           width: EXPORT_WIDTH_PX,
@@ -736,6 +754,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           scrollX: 0,
           scrollY: 0,
           removeContainer: true,
+          imageTimeout: isIOS ? 10000 : 15000,
           onclone: (_clonedDoc, clonedEl) => {
             clonedEl.style.visibility = "visible";
             clonedEl.style.opacity = "1";
@@ -853,11 +872,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const isLastPage = rowIndex >= rows.length;
 
-        /**
-         * Aquí se aplica el comportamiento final:
-         * - Header solo en la página 1.
-         * - Footer solo en la última página.
-         */
         controlHeaderFooter(page, pageIndex === 0, isLastPage);
 
         await waitFrames(2);
@@ -867,9 +881,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           `Renderizando página ${pageIndex + 1}...`,
         );
 
-        const pageCanvas = await renderDomPageCanvas(page);
+        const pageCanvas = await withTimeout(
+          renderDomPageCanvas(page),
+          isIOS ? 20000 : 45000,
+          "Safari iOS no pudo renderizar esta página del PDF. Intenta con menos productos o calidad normal.",
+        );
 
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
+
+        if (!imgData || imgData === "data:,") {
+          throw new Error(
+            "Safari iOS no pudo generar la imagen del PDF por límite de canvas.",
+          );
+        }
+
         const pageHmm = Math.min(
           usableHmm,
           pageCanvas.height / canvasScale / cssPxPerMm,
@@ -902,8 +927,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           );
         }
 
-        pageCanvas.width = 1;
-        pageCanvas.height = 1;
+        /**
+         * Liberar memoria de canvas.
+         * En iOS ayuda más dejarlo en 0.
+         */
+        pageCanvas.width = 0;
+        pageCanvas.height = 0;
 
         page.remove();
 
@@ -914,7 +943,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           `Página ${pageIndex} lista...`,
         );
 
-        await waitFrames(1);
+        if (isIOS) {
+          await waitMs(250);
+        } else {
+          await waitFrames(1);
+        }
       }
 
       updateProgress(97, "Finalizando archivo...");
@@ -936,7 +969,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       container.remove();
     }
   };
-
+  
   const downloadBlob = (blob: Blob, outName: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
