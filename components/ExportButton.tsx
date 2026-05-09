@@ -1,5 +1,4 @@
 import React, { useMemo, useRef, useState } from "react";
-import { useReactToPrint } from "react-to-print";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { getImageUrl } from "@/helper/imageDB";
@@ -37,6 +36,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   const [progressText, setProgressText] = useState("");
 
   const iosPrintJobRef = useRef<IOSPrintJob | null>(null);
+  const iosPrintStyleRef = useRef<HTMLStyleElement | null>(null);
 
   const isIOS =
     /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
@@ -85,15 +85,147 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     )}`;
   };
 
-  const prepareIOSPrintDom = async () => {
+  const injectIOSPrintStyles = () => {
+    if (iosPrintStyleRef.current) return;
+
+    const style = document.createElement("style");
+    style.setAttribute("data-ios-print-style", "true");
+
+    style.innerHTML = `
+      @page {
+        size: A4;
+        margin: 10mm;
+      }
+
+      @media print {
+        html,
+        body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+
+        body.ios-print-active * {
+          visibility: hidden !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          animation: none !important;
+          transition: none !important;
+        }
+
+        body.ios-print-active [data-ios-print-root="true"],
+        body.ios-print-active [data-ios-print-root="true"] * {
+          visibility: visible !important;
+        }
+
+        body.ios-print-active [data-hide-on-pdf="true"],
+        body.ios-print-active .ios-print-hidden-category,
+        body.ios-print-active .ios-print-hidden-category * {
+          display: none !important;
+          visibility: hidden !important;
+        }
+
+        body.ios-print-active [data-ios-print-root="true"] {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          min-width: 0 !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+          overflow: visible !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          transform: none !important;
+        }
+
+        body.ios-print-active #catalog-capture-area {
+          width: 100% !important;
+          min-width: 0 !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+          overflow: visible !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          transform: none !important;
+        }
+
+        body.ios-print-active .products-grid {
+          display: grid !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          column-gap: 18px !important;
+          row-gap: 24px !important;
+          align-items: start !important;
+          width: 100% !important;
+          box-sizing: border-box !important;
+          background: #ffffff !important;
+        }
+
+        body.ios-print-active .product-pdf {
+          display: block !important;
+          width: auto !important;
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+          -webkit-column-break-inside: avoid !important;
+          text-decoration: none !important;
+          color: inherit !important;
+          position: relative !important;
+          background: #ffffff !important;
+          overflow: visible !important;
+        }
+
+        body.ios-print-active .product-media {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+          overflow: hidden !important;
+        }
+
+        body.ios-print-active img,
+        body.ios-print-active .product-media img,
+        body.ios-print-active .product-pdf img {
+          max-width: 100% !important;
+          height: auto !important;
+          object-fit: contain !important;
+          object-position: center !important;
+        }
+
+        body.ios-print-active a {
+          color: inherit !important;
+          text-decoration: none !important;
+        }
+
+        body.ios-print-active [data-price-inline="true"],
+        body.ios-print-active [data-category-badge="true"] {
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          line-height: 1 !important;
+          white-space: nowrap !important;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+    iosPrintStyleRef.current = style;
+  };
+
+  const prepareIOSPrintDom = () => {
     const root = targetRef.current;
     const job = iosPrintJobRef.current;
 
     if (!root) return;
 
-    setProgress(35);
-    setProgressText("Preparando impresión nativa en iPhone...");
+    injectIOSPrintStyles();
 
+    document.body.classList.add("ios-print-active");
+
+    root.setAttribute("data-ios-print-root", "true");
     root.classList.add("ios-native-print-mode");
 
     root
@@ -154,30 +286,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       img.crossOrigin = "anonymous";
       img.referrerPolicy = "no-referrer";
     });
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => resolve());
-      });
-    });
-
-    if ("fonts" in document) {
-      try {
-        await (document as any).fonts.ready;
-      } catch {
-        // No bloquear impresión.
-      }
-    }
-
-    setProgress(70);
-    setProgressText("Abriendo opciones para guardar PDF...");
   };
 
   const cleanupIOSPrintDom = () => {
     const root = targetRef.current;
 
+    document.body.classList.remove("ios-print-active");
+
     if (!root) return;
 
+    root.removeAttribute("data-ios-print-root");
     root.classList.remove("ios-native-print-mode");
 
     root
@@ -200,114 +318,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     iosPrintJobRef.current = null;
   };
 
-  const printCatalogIOS = useReactToPrint({
-    contentRef: targetRef,
-    documentTitle: fileName || "catalogo",
-    removeAfterPrint: true,
-    onBeforePrint: prepareIOSPrintDom,
-    onAfterPrint: cleanupIOSPrintDom,
-    pageStyle: `
-      @page {
-        size: A4;
-        margin: 10mm;
-      }
-
-      @media print {
-        html,
-        body {
-          width: 210mm !important;
-          min-height: 297mm !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #ffffff !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-
-        body * {
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          animation: none !important;
-          transition: none !important;
-        }
-
-        [data-hide-on-pdf="true"],
-        .ios-print-hidden-category {
-          display: none !important;
-        }
-
-        .ios-native-print-mode {
-          width: 100% !important;
-          min-width: 0 !important;
-          max-width: 100% !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #ffffff !important;
-          overflow: visible !important;
-          box-shadow: none !important;
-          border-radius: 0 !important;
-        }
-
-        #catalog-capture-area {
-          width: 100% !important;
-          min-width: 0 !important;
-          max-width: 100% !important;
-          margin: 0 !important;
-          background: #ffffff !important;
-          overflow: visible !important;
-          box-shadow: none !important;
-          border-radius: 0 !important;
-        }
-
-        .products-grid {
-          display: grid !important;
-          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          column-gap: 18px !important;
-          row-gap: 24px !important;
-          align-items: start !important;
-          width: 100% !important;
-          box-sizing: border-box !important;
-          background: #ffffff !important;
-        }
-
-        .product-pdf {
-          display: block !important;
-          width: auto !important;
-          break-inside: avoid !important;
-          page-break-inside: avoid !important;
-          -webkit-column-break-inside: avoid !important;
-          text-decoration: none !important;
-          color: inherit !important;
-          position: relative !important;
-        }
-
-        .product-media {
-          break-inside: avoid !important;
-          page-break-inside: avoid !important;
-          overflow: hidden !important;
-        }
-
-        .product-media img,
-        img {
-          max-width: 100% !important;
-          height: auto !important;
-          object-fit: contain !important;
-          object-position: center !important;
-        }
-
-        a {
-          color: inherit !important;
-          text-decoration: none !important;
-        }
-      }
-    `,
-  });
-
   const handleIOSNativePrint = async (job: IOSPrintJob) => {
     try {
       setLoading(true);
       setProgress(1);
-      setProgressText("Preparando impresión nativa en iPhone...");
+      setProgressText("Preparando catálogo para imprimir...");
 
       iosPrintJobRef.current = job;
 
@@ -316,25 +331,44 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       setSharedFileName(outName);
 
+      prepareIOSPrintDom();
+
+      setProgress(70);
+      setProgressText("Abriendo vista de impresión...");
+
       await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
       });
 
-      printCatalogIOS();
+      setLoading(false);
+      setProgress(0);
+      setProgressText("");
 
-      setProgress(100);
+      const afterPrint = () => {
+        cleanupIOSPrintDom();
+        window.removeEventListener("afterprint", afterPrint);
+      };
+
+      window.addEventListener("afterprint", afterPrint);
+
+      setTimeout(() => {
+        window.print();
+      }, 250);
+
+      setTimeout(() => {
+        cleanupIOSPrintDom();
+        window.removeEventListener("afterprint", afterPrint);
+      }, 30000);
 
       if (job.mode === "share") {
-        setProgressText("Guarda o comparte el PDF desde Safari.");
         setShowShareInstructions(true);
-      } else {
-        setProgressText("Selecciona Guardar como PDF o Compartir.");
       }
     } catch (error) {
       console.error(error);
-      alert("No se pudo abrir la vista de impresión del PDF.");
       cleanupIOSPrintDom();
-    } finally {
+      alert("No se pudo abrir la vista de impresión del PDF.");
       resetProgressLater();
     }
   };
@@ -1370,7 +1404,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             <div className="mt-3 flex items-center justify-between">
               <span className="text-xs text-slate-400">
                 {isIOS
-                  ? "Safari abrirá las opciones para guardar o compartir"
+                  ? "Safari abrirá la vista para guardar o compartir"
                   : "No cierres esta ventana"}
               </span>
 
@@ -1409,7 +1443,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
             <p className="text-sm text-slate-500 mb-4">
               {isIOS
-                ? "En iPhone, usa la opción de compartir o guardar en Archivos. Luego puedes enviarlo por WhatsApp."
+                ? "En iPhone, toca el botón de compartir en la vista de impresión y elige Guardar en Archivos o WhatsApp."
                 : "Sigue estos pasos para enviarlo por WhatsApp:"}
             </p>
 
@@ -1518,7 +1552,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
             <p className="text-[10px] text-slate-400 px-1 -mt-1">
               {isIOS
-                ? "Safari usará la vista nativa para guardar o compartir como PDF."
+                ? "En iPhone se abre la vista nativa para guardar o compartir como PDF."
                 : quality === "normal"
                   ? "Archivo más liviano — ideal para WhatsApp"
                   : "Mayor resolución — mejor para imprimir"}
