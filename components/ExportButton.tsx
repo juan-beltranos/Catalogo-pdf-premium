@@ -58,12 +58,61 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgressText(text);
     };
 
+    const PDF_DEBUG = isIOS; // Solo muestra alerts en iOS.
+
+    const debugInfo: string[] = [];
+
+    const safeJson = (data: any) => {
+      try {
+        return JSON.stringify(data, null, 2);
+      } catch {
+        return String(data);
+      }
+    };
+
+    const debug = (label: string, data?: any) => {
+      if (!PDF_DEBUG) return;
+
+      const line = `[PDF DEBUG] ${label}${data !== undefined ? `\n${safeJson(data)}` : ""
+        }`;
+
+      console.log(line);
+      debugInfo.push(line);
+
+      if (debugInfo.length > 30) {
+        debugInfo.shift();
+      }
+    };
+
+    const debugAlert = (label: string, data?: any) => {
+      debug(label, data);
+
+      if (!PDF_DEBUG) return;
+
+      const text =
+        data !== undefined
+          ? safeJson(data).slice(0, 2500)
+          : "Sin datos extra";
+
+      alert(`${label}\n\n${text}`);
+    };
+
+    const getErrorInfo = (err: unknown) => {
+      if (err instanceof Error) {
+        return {
+          name: err.name,
+          message: err.message,
+          stack: err.stack?.slice(0, 1500),
+        };
+      }
+
+      return {
+        error: String(err),
+      };
+    };
+
     updateProgress(3, "Preparando catálogo...");
 
-    /**
-     * Safari iOS tiene límites más bajos de canvas/memoria.
-     * Por eso reducimos ancho, scale y calidad solo en iOS.
-     */
     const EXPORT_WIDTH_PX = isIOS ? 800 : 1200;
     const PDF_MARGIN_MM = 10;
 
@@ -175,11 +224,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     const container = document.createElement("div");
 
-    /**
-     * Importante para Safari iOS:
-     * no usar left:-99999px porque html2canvas puede quedarse colgado.
-     * Lo dejamos fijo, invisible detrás, pero dentro del viewport.
-     */
     container.style.position = "fixed";
     container.style.left = "0";
     container.style.top = "0";
@@ -345,7 +389,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               img.src = objUrl;
               await waitLoad(img, 12000);
             } catch {
-              // No bloquear PDF por una imagen fallida
+              // No bloquear PDF por una imagen fallida.
             }
           }),
         );
@@ -385,7 +429,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               img.src = dataUrl;
               await waitLoad(img, 5000);
             } catch {
-              // Mantener src original si falla la conversión
+              // Mantener src original si falla la conversión.
             }
           }),
         );
@@ -513,7 +557,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         try {
           await (document as any).fonts.ready;
         } catch {
-          // Ignorar si falla fonts.ready
+          // Ignorar si falla fonts.ready.
         }
       }
 
@@ -682,9 +726,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const makePage = (includeHeader: boolean) => {
         const page = clone.cloneNode(true) as HTMLElement;
 
-        /**
-         * Safari iOS: no mover la página a -99999px.
-         */
         page.style.position = "fixed";
         page.style.left = "0";
         page.style.top = "0";
@@ -743,12 +784,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const renderDomPageCanvas = async (pageEl: HTMLElement) => {
         await waitFrames(2);
 
-        return await html2canvas(pageEl, {
+        debug("ENTRANDO renderDomPageCanvas", {
+          width: pageEl.scrollWidth,
+          height: pageEl.scrollHeight,
+          offsetWidth: pageEl.offsetWidth,
+          offsetHeight: pageEl.offsetHeight,
+          imgs: pageEl.querySelectorAll("img").length,
+        });
+
+        const canvas = await html2canvas(pageEl, {
           scale: canvasScale,
           useCORS: true,
           allowTaint: false,
           backgroundColor: "#ffffff",
-          logging: false,
+          logging: true,
           width: EXPORT_WIDTH_PX,
           windowWidth: EXPORT_WIDTH_PX,
           scrollX: 0,
@@ -756,6 +805,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           removeContainer: true,
           imageTimeout: isIOS ? 10000 : 15000,
           onclone: (_clonedDoc, clonedEl) => {
+            debug("HTML2CANVAS onclone ejecutado", {
+              clonedWidth: (clonedEl as HTMLElement).scrollWidth,
+              clonedHeight: (clonedEl as HTMLElement).scrollHeight,
+              clonedImgs: clonedEl.querySelectorAll("img").length,
+            });
+
             clonedEl.style.visibility = "visible";
             clonedEl.style.opacity = "1";
             clonedEl.style.background = "#ffffff";
@@ -778,6 +833,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             });
           },
         });
+
+        debug("SALIENDO renderDomPageCanvas", {
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          canvasPixels: canvas.width * canvas.height,
+        });
+
+        return canvas;
       };
 
       const collectPageLinks = (page: HTMLElement): LinkArea[] => {
@@ -881,18 +944,75 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           `Renderizando página ${pageIndex + 1}...`,
         );
 
-        const pageCanvas = await withTimeout(
-          renderDomPageCanvas(page),
-          isIOS ? 20000 : 45000,
-          "Safari iOS no pudo renderizar esta página del PDF. Intenta con menos productos o calidad normal.",
-        );
+        debugAlert("ANTES DE HTML2CANVAS", {
+          pageIndex,
+          rowsAdded,
+          rowIndex,
+          totalRows: rows.length,
+          pageScrollWidth: page.scrollWidth,
+          pageScrollHeight: page.scrollHeight,
+          pageOffsetWidth: page.offsetWidth,
+          pageOffsetHeight: page.offsetHeight,
+          pageRect: {
+            width: page.getBoundingClientRect().width,
+            height: page.getBoundingClientRect().height,
+            top: page.getBoundingClientRect().top,
+            left: page.getBoundingClientRect().left,
+          },
+          gridChildren: grid.children.length,
+          imagesInPage: page.querySelectorAll("img").length,
+          EXPORT_WIDTH_PX,
+          canvasScale,
+          jpegQuality,
+          isIOS,
+          userAgent: navigator.userAgent,
+        });
 
-        const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
+        let pageCanvas: HTMLCanvasElement;
+
+        try {
+          pageCanvas = await withTimeout(
+            renderDomPageCanvas(page),
+            isIOS ? 20000 : 45000,
+            "Safari iOS no pudo renderizar esta página del PDF. Intenta con menos productos o calidad normal.",
+          );
+        } catch (err) {
+          debugAlert("ERROR EN HTML2CANVAS", getErrorInfo(err));
+          throw err;
+        }
+
+        debugAlert("DESPUÉS DE HTML2CANVAS", {
+          canvasWidth: pageCanvas.width,
+          canvasHeight: pageCanvas.height,
+          canvasPixels: pageCanvas.width * pageCanvas.height,
+        });
+
+        let imgData = "";
+
+        try {
+          imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
+        } catch (err) {
+          debugAlert("ERROR EN toDataURL", getErrorInfo(err));
+          throw err;
+        }
+
+        debugAlert("DESPUÉS DE toDataURL", {
+          imgDataStartsWith: imgData.slice(0, 30),
+          imgDataLength: imgData.length,
+        });
 
         if (!imgData || imgData === "data:,") {
-          throw new Error(
+          const err = new Error(
             "Safari iOS no pudo generar la imagen del PDF por límite de canvas.",
           );
+
+          debugAlert("CANVAS INVÁLIDO", {
+            canvasWidth: pageCanvas.width,
+            canvasHeight: pageCanvas.height,
+            imgData,
+          });
+
+          throw err;
         }
 
         const pageHmm = Math.min(
@@ -927,10 +1047,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           );
         }
 
-        /**
-         * Liberar memoria de canvas.
-         * En iOS ayuda más dejarlo en 0.
-         */
         pageCanvas.width = 0;
         pageCanvas.height = 0;
 
@@ -964,12 +1080,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         blob: pdf.output("blob"),
         fileName: `${safeFileName}.pdf`,
       };
+    } catch (err) {
+      debugAlert("ERROR FINAL GENERANDO PDF", {
+        ...getErrorInfo(err),
+        lastDebugLines: debugInfo.slice(-8),
+      });
+
+      throw err;
     } finally {
       objectUrlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
       container.remove();
     }
   };
-  
+
   const downloadBlob = (blob: Blob, outName: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
