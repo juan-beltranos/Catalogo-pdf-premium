@@ -997,7 +997,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
-      alert("Error generando/descargando PDF.");
+      const msg = error instanceof Error ? error.message : "Error desconocido";
+      alert(`Error generando PDF: ${msg}\n\nIntenta con calidad "Normal" si usas iPhone.`);
     } finally {
       resetProgressLater();
     }
@@ -1025,7 +1026,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
-      alert("Error generando/descargando PDF por categoría.");
+      const msg = error instanceof Error ? error.message : "Error desconocido";
+      alert(`Error generando PDF: ${msg}\n\nIntenta con calidad "Normal" si usas iPhone.`);
     } finally {
       resetProgressLater();
     }
@@ -1075,7 +1077,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setShowShareInstructions(true);
     } catch (error) {
       console.error(error);
-      alert("Error generando el PDF. Por favor intenta de nuevo.");
+      const msg = error instanceof Error ? error.message : "Error desconocido";
+      alert(`Error generando PDF: ${msg}\n\nIntenta con calidad "Normal" si usas iPhone.`);
     } finally {
       resetProgressLater();
     }
