@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Product } from "../types";
 import {
   Plus,
@@ -10,6 +10,10 @@ import {
   Check,
   Tag,
   GripVertical,
+  FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from "lucide-react";
 import { compressImage, formatCurrency } from "../constants";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,6 +35,7 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import * as XLSX from "xlsx";
 
 interface ProductManagerProps {
   products: Product[];
@@ -40,6 +45,8 @@ interface ProductManagerProps {
   onDownloadPdfAll?: () => void;
   onDownloadPdfByCategory?: (category: string) => void;
 }
+
+const PRODUCTS_PER_PAGE = 20;
 
 function SortableCard({
   id,
@@ -80,6 +87,55 @@ function SortableCard({
   );
 }
 
+// ─── Tipos para importación Excel ────────────────────────────────────────────
+
+type ExcelRow = Record<string, any>;
+
+/** Normaliza un nombre de columna: minúsculas, sin tildes, sin espacios extra */
+const normalizeKey = (key: string) =>
+  key
+    .toString()
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_");
+
+/**
+ * Intenta encontrar un valor en una fila buscando por múltiples alias de columna.
+ * Por ejemplo: "nombre" | "name" | "producto" | "title"
+ */
+const getField = (row: ExcelRow, ...aliases: string[]): any => {
+  for (const alias of aliases) {
+    const key = Object.keys(row).find((k) => normalizeKey(k) === alias);
+    if (
+      key !== undefined &&
+      row[key] !== undefined &&
+      row[key] !== null &&
+      row[key] !== ""
+    )
+      return row[key];
+  }
+  return undefined;
+};
+
+const toStr = (v: any): string =>
+  v === undefined || v === null ? "" : String(v).trim();
+
+const toNum = (v: any): number => {
+  if (typeof v === "number") return v;
+  const n = Number(String(v ?? "").replace(/[^\d.]/g, ""));
+  return isFinite(n) ? n : 0;
+};
+
+const normalizeHtml = (s: any): string => {
+  const str = toStr(s);
+  if (!str) return "";
+  return /<\/?[a-z][\s\S]*>/i.test(str) ? str : `<p>${str}</p>`;
+};
+
+// ─── Componente principal ─────────────────────────────────────────────────────
+
 export const ProductManager: React.FC<ProductManagerProps> = ({
   products,
   onAdd,
@@ -94,7 +150,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [formData, setFormData] = useState({
     name: "",
     price: "",
-    originalPrice: "", // NUEVO: precio anterior
+    originalPrice: "",
     description: "",
     quantity: "",
     image: "",
@@ -111,30 +167,23 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>("__ALL__");
   const [isRenamingCategory, setIsRenamingCategory] = useState(false);
   const [renameCategoryValue, setRenameCategoryValue] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // ── Paginación ─────────────────────────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // ── Estado para el modal de preview de Excel ──
+  const [excelPreview, setExcelPreview] = useState<{
+    rows: ExcelRow[];
+    mapped: Partial<Product>[];
+    fileName: string;
+  } | null>(null);
+  const [importingExcel, setImportingExcel] = useState(false);
+  const excelInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    if (active.id === over.id) return;
-
-    const ids = orderedProducts.map((p) => p.id);
-    const oldIndex = ids.indexOf(String(active.id));
-    const newIndex = ids.indexOf(String(over.id));
-
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const newIds = arrayMove(ids, oldIndex, newIndex);
-
-    newIds.forEach((id, index) => {
-      onUpdate(id, { order: index });
-    });
-  };
 
   const categories = useMemo(() => {
     const map = new Map<string, string>();
@@ -148,21 +197,105 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   }, [products]);
 
   const filteredProducts = useMemo(() => {
+    const query = searchTerm
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+    // Si hay búsqueda, busca en TODOS los productos sin importar la categoría
+    if (query) {
+      return products.filter((p) => {
+        const name = (p.name || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        const category = (p.category || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        const description = (p.description || "")
+          .replace(/<[^>]*>/g, " ")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        const price = String(p.price || "");
+
+        return (
+          name.includes(query) ||
+          category.includes(query) ||
+          description.includes(query) ||
+          price.includes(query)
+        );
+      });
+    }
+
+    // Si no hay búsqueda, funciona el filtro de categoría normal
     if (categoryFilter === "__ALL__") return products;
+
     return products.filter((p) => (p.category || "").trim() === categoryFilter);
-  }, [products, categoryFilter]);
+  }, [products, categoryFilter, searchTerm]);
 
   const orderedProducts = useMemo(() => {
     const arr = [...filteredProducts];
-
     arr.sort((a, b) => {
       const ao = typeof a.order === "number" ? a.order : Number(a.id);
       const bo = typeof b.order === "number" ? b.order : Number(b.id);
       return ao - bo;
     });
-
     return arr;
   }, [filteredProducts]);
+
+  const totalProducts = orderedProducts.length;
+  const totalPages = Math.max(1, Math.ceil(totalProducts / PRODUCTS_PER_PAGE));
+
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * PRODUCTS_PER_PAGE;
+  const pageEnd = pageStart + PRODUCTS_PER_PAGE;
+
+  const paginatedProducts = useMemo(() => {
+    return orderedProducts.slice(pageStart, pageEnd);
+  }, [orderedProducts, pageStart, pageEnd]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, searchTerm]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const goToPage = (page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages);
+    setCurrentPage(nextPage);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const ids = orderedProducts.map((p) => p.id);
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newIds = arrayMove(ids, oldIndex, newIndex);
+
+    // Optimización:
+    // antes se actualizaban todos los productos cada vez.
+    // ahora solo se actualizan los productos cuyo order realmente cambió.
+    newIds.forEach((id, index) => {
+      if (ids[index] !== id) {
+        onUpdate(id, { order: index });
+      }
+    });
+  };
 
   const resetForm = () => {
     setFormData({
@@ -207,16 +340,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
     setCategoryMode("select");
     setNewCategory("");
-
     setEditingId(product.id);
     setIsAdding(false);
 
     if (product.image) {
       setImagePreview(product.image);
-      return;
-    }
-
-    if (product.imageId) {
+    } else if (product.imageId) {
       const url = await getImageUrl(product.imageId);
       setImagePreview(url || "");
     } else {
@@ -234,10 +363,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       !Number.isFinite(originalPrice) ||
       originalPrice <= 0 ||
       originalPrice <= price
-    ) {
+    )
       return null;
-    }
-
     return Math.round(((originalPrice - price) / originalPrice) * 100);
   };
 
@@ -261,7 +388,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     const productData: Partial<Product> = {
       name: formData.name,
       price,
-      originalPrice, // NUEVO
+      originalPrice,
       quantity:
         formData.quantity.trim() === ""
           ? undefined
@@ -291,6 +418,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         featured: !!productData.featured,
         hidden: !!productData.hidden,
       } as Product);
+
+      goToPage(totalPages);
     }
 
     resetForm();
@@ -299,7 +428,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const base64 = await compressImage(file);
       setFormData((prev) => ({ ...prev, image: base64, imageId: "" }));
@@ -309,37 +437,179 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     }
   };
 
-  const isEditing = editingId !== null;
+  // ─── IMPORTAR EXCEL ────────────────────────────────────────────────────────
 
-  const DEMO_IMAGE_URL = "/zapato.png";
+  /**
+   * Convierte una fila del Excel (objeto con claves = nombre columna)
+   * en un Partial<Product> usando alias flexibles para cada campo.
+   *
+   * Columnas soportadas (se detectan sin importar mayúsculas/tildes):
+   *   nombre | name | producto | title
+   *   precio | price | valor | costo | cost
+   *   precio_anterior | precio_viejo | old_price | original_price | compare_at_price
+   *   descripcion | description | detalle | detail
+   *   categoria | category | tipo | type | grupo | group
+   *   cantidad | quantity | stock | inventario | inventory
+   *   destacado | featured | star
+   *   oculto | hidden
+   */
+  const mapExcelRow = (row: ExcelRow, index: number): Partial<Product> | null => {
+    const name = toStr(
+      getField(row, "nombre", "name", "producto", "title", "articulo", "item")
+    );
+    if (!name) return null;
 
-  const seedProducts = (count = 100) => {
-    const baseOrder = products.length;
+    const price = toNum(
+      getField(row, "precio", "price", "valor", "costo", "cost", "precio_actual")
+    );
 
-    for (let i = 0; i < count; i++) {
-      const id =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${i}`;
+    const rawOriginal = getField(
+      row,
+      "precio_anterior",
+      "precio_viejo",
+      "old_price",
+      "original_price",
+      "compare_at_price",
+      "precio_original",
+      "precio_tachado",
+      "precio_base"
+    );
 
-      const price = (i + 1) * 10;
-      const originalPrice = i % 3 === 0 ? price + 10 : undefined;
+    const originalPriceNum =
+      rawOriginal !== undefined ? toNum(rawOriginal) : undefined;
 
-      onAdd({
-        id,
-        name: `Producto demo ${baseOrder + i + 1}`,
-        price,
-        originalPrice,
-        description: `<p>Demo</p>`,
-        image: DEMO_IMAGE_URL,
-        imageId: "",
-        category: ["Cat A", "Cat B", "Cat C", "Cat D", "Cat E"][i % 5],
-        order: baseOrder + i,
-        featured: i % 10 === 0,
-        hidden: false,
-      } as Product);
+    const originalPrice =
+      typeof originalPriceNum === "number" &&
+        originalPriceNum > 0 &&
+        originalPriceNum > price
+        ? originalPriceNum
+        : undefined;
+
+    const description = normalizeHtml(
+      getField(row, "descripcion", "description", "detalle", "detail", "info")
+    );
+
+    const category = toStr(
+      getField(
+        row,
+        "categoria",
+        "category",
+        "tipo",
+        "type",
+        "grupo",
+        "group",
+        "seccion",
+        "section"
+      )
+    );
+
+    const quantityRaw = getField(
+      row,
+      "cantidad",
+      "quantity",
+      "stock",
+      "inventario",
+      "inventory",
+      "existencias"
+    );
+
+    const quantity =
+      quantityRaw !== undefined
+        ? Math.max(0, parseInt(String(quantityRaw), 10) || 0)
+        : 0;
+
+    const featuredRaw = getField(row, "destacado", "featured", "star", "especial");
+    const featured =
+      featuredRaw === true ||
+      featuredRaw === 1 ||
+      toStr(featuredRaw).toLowerCase() === "si" ||
+      toStr(featuredRaw).toLowerCase() === "sí" ||
+      toStr(featuredRaw).toLowerCase() === "true";
+
+    const hiddenRaw = getField(row, "oculto", "hidden", "inactivo", "inactive");
+    const hidden =
+      hiddenRaw === true ||
+      hiddenRaw === 1 ||
+      toStr(hiddenRaw).toLowerCase() === "si" ||
+      toStr(hiddenRaw).toLowerCase() === "sí" ||
+      toStr(hiddenRaw).toLowerCase() === "true";
+
+    return {
+      id: crypto.randomUUID?.() ?? `${Date.now()}-${index}`,
+      name,
+      price,
+      originalPrice,
+      description,
+      category,
+      quantity,
+      image: "",
+      imageId: "",
+      order: products.length + index,
+      featured,
+      hidden,
+    };
+  };
+
+  const handleExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (excelInputRef.current) excelInputRef.current.value = "";
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array" });
+
+      // Usar la primera hoja
+      const sheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[sheetName];
+
+      // Convertir a JSON (primera fila = headers)
+      const rows: ExcelRow[] = XLSX.utils.sheet_to_json(sheet, {
+        defval: "",
+        raw: false,
+      });
+
+      if (!rows.length) {
+        alert("El archivo está vacío o no tiene datos en la primera hoja.");
+        return;
+      }
+
+      // Mapear filas a productos
+      const mapped = rows
+        .map((row, i) => mapExcelRow(row, i))
+        .filter((p): p is Partial<Product> => p !== null && !!p.name);
+
+      if (!mapped.length) {
+        alert(
+          "No se encontraron productos válidos.\n\nAsegúrate de que el Excel tenga una columna llamada 'nombre' o 'name'."
+        );
+        return;
+      }
+
+      // Mostrar preview antes de confirmar
+      setExcelPreview({ rows, mapped, fileName: file.name });
+    } catch (err) {
+      console.error("Error leyendo Excel:", err);
+      alert("No se pudo leer el archivo. Asegúrate de que sea un .xlsx o .xls válido.");
     }
   };
+
+  const handleConfirmExcelImport = () => {
+    if (!excelPreview) return;
+    setImportingExcel(true);
+
+    try {
+      excelPreview.mapped.forEach((p) => {
+        onAdd(p as Product);
+      });
+      setExcelPreview(null);
+      setCurrentPage(totalPages);
+    } finally {
+      setImportingExcel(false);
+    }
+  };
+
+  // ─── JSON import existente ───────────────────────────────────────────────
 
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -347,9 +617,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     id?: string;
     name?: string;
     price?: number | string;
-    originalPrice?: number | string; // NUEVO
-    oldPrice?: number | string; // opcional por compatibilidad
-    compareAtPrice?: number | string; // opcional por compatibilidad
+    originalPrice?: number | string;
+    oldPrice?: number | string;
+    compareAtPrice?: number | string;
     description?: string;
     image?: string;
     imageId?: string;
@@ -359,16 +629,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     hidden?: boolean;
   };
 
-  const normalizeHtml = (s: any) => {
-    const str = typeof s === "string" ? s : "";
-    if (!str.trim()) return "";
-    const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(str);
-    return looksLikeHtml ? str : `<p>${str}</p>`;
-  };
-
   const handleImportJsonFile = async (file: File) => {
     const text = await file.text();
-
     let parsed: any;
     try {
       parsed = JSON.parse(text);
@@ -384,14 +646,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         : [];
 
     if (!items.length) {
-      alert(
-        "No encontré productos. El JSON debe ser un array o tener { products: [] }",
-      );
+      alert("No encontré productos. El JSON debe ser un array o tener { products: [] }");
       return;
     }
 
     const baseOrder = products.length;
-
     const sorted = [...items].sort((a, b) => {
       const an = (a.name ?? "")
         .toString()
@@ -455,17 +714,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     });
 
     if (importInputRef.current) importInputRef.current.value = "";
-  };
-
-  const handleImportJsonClick = () => {
-    importInputRef.current?.click();
+    setCurrentPage(totalPages);
   };
 
   const handleRenameCategory = () => {
     const oldName = (formData.category || "").trim();
     const newName = renameCategoryValue.trim();
-
     if (!oldName || !newName) return;
+
     if (oldName.toLowerCase() === newName.toLowerCase()) {
       setIsRenamingCategory(false);
       setRenameCategoryValue("");
@@ -484,15 +740,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     }
 
     products.forEach((p) => {
-      if ((p.category || "").trim().toLowerCase() === oldName.toLowerCase()) {
+      if ((p.category || "").trim().toLowerCase() === oldName.toLowerCase())
         onUpdate(p.id, { category: newName });
-      }
     });
 
     setFormData((prev) => ({ ...prev, category: newName }));
-    if (categoryFilter.trim().toLowerCase() === oldName.toLowerCase()) {
+
+    if (categoryFilter.trim().toLowerCase() === oldName.toLowerCase())
       setCategoryFilter(newName);
-    }
 
     setIsRenamingCategory(false);
     setRenameCategoryValue("");
@@ -509,17 +764,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     if (!confirmed) return;
 
     products.forEach((p) => {
-      if (
-        (p.category || "").trim().toLowerCase() ===
-        currentCategory.toLowerCase()
-      ) {
+      if ((p.category || "").trim().toLowerCase() === currentCategory.toLowerCase())
         onUpdate(p.id, { category: "" });
-      }
     });
 
-    if (categoryFilter.trim().toLowerCase() === currentCategory.toLowerCase()) {
+    if (categoryFilter.trim().toLowerCase() === currentCategory.toLowerCase())
       setCategoryFilter("__ALL__");
-    }
 
     setFormData((prev) => ({ ...prev, category: "" }));
     setIsRenamingCategory(false);
@@ -533,29 +783,83 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     formData.originalPrice.trim() === "" ? undefined : previewOriginalPrice
   );
 
-  const handleExportJson = () => {
-    try {
-      // Si ya tienes los productos en props, usa esto:
-      const data = products;
+  const isEditing = editingId !== null;
 
-      // Si quieres leer directamente de localStorage:
-      // const data = JSON.parse(localStorage.getItem("products") || "[]");
+  const renderPagination = () => {
+    if (totalProducts <= PRODUCTS_PER_PAGE) return null;
 
-      const json = JSON.stringify(data, null, 2); // bonito (indentado)
+    const visiblePages = Array.from({ length: totalPages }, (_, i) => i + 1).filter(
+      (page) =>
+        page === 1 ||
+        page === totalPages ||
+        Math.abs(page - safeCurrentPage) <= 1
+    );
 
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
+    return (
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white border border-slate-100 rounded-2xl px-4 py-3">
+        <p className="text-xs text-slate-500">
+          Mostrando{" "}
+          <span className="font-semibold text-slate-800">
+            {totalProducts === 0 ? 0 : pageStart + 1}
+          </span>{" "}
+          -{" "}
+          <span className="font-semibold text-slate-800">
+            {Math.min(pageEnd, totalProducts)}
+          </span>{" "}
+          de{" "}
+          <span className="font-semibold text-slate-800">{totalProducts}</span>{" "}
+          productos
+        </p>
 
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "productos.json";
-      link.click();
+        <div className="flex items-center gap-1 flex-wrap">
+          <button
+            type="button"
+            onClick={() => goToPage(safeCurrentPage - 1)}
+            disabled={safeCurrentPage === 1}
+            className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Anterior
+          </button>
 
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Error exportando JSON", error);
-    }
+          {visiblePages.map((page, index) => {
+            const previousPage = visiblePages[index - 1];
+            const showDots = previousPage && page - previousPage > 1;
+
+            return (
+              <React.Fragment key={page}>
+                {showDots && (
+                  <span className="px-2 text-slate-300 text-sm">...</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => goToPage(page)}
+                  className={`h-9 min-w-9 px-3 rounded-xl text-sm border transition ${page === safeCurrentPage
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                    }`}
+                >
+                  {page}
+                </button>
+              </React.Fragment>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => goToPage(safeCurrentPage + 1)}
+            disabled={safeCurrentPage === totalPages}
+            className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+          >
+            Siguiente
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
   };
+
+  // ─── RENDER ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4 mb-24">
@@ -565,22 +869,28 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <Package className="w-5 h-5 text-blue-600" />
           Tus Productos
         </h2>
-        {/* <button
-          onClick={handleExportJson}
-          className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-green-700"
-        >
-          Exportar JSON
-        </button> */}
-
-        {/* TEMPORAL: quitar cuando termines las pruebas */}
-        {/* <button
-          onClick={() => seedProducts(100)}
-          className="bg-purple-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-purple-700"
-        >
-          🧪 Cargar 100 demo
-        </button> */}
 
         <div className="flex items-center gap-2">
+          {/* Botón importar Excel */}
+          <button
+            onClick={() => excelInputRef.current?.click()}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-100"
+            title="Importar productos desde Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span className="hidden sm:inline">Importar Excel</span>
+            <span className="sm:hidden">Excel</span>
+          </button>
+
+          {/* Input oculto para Excel */}
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleExcelFileChange}
+          />
+
           {(onDownloadPdfAll || onDownloadPdfByCategory) && (
             <div className="hidden sm:flex items-center gap-2">
               {onDownloadPdfAll && (
@@ -605,7 +915,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       </option>
                     ))}
                   </select>
-
                   <button
                     disabled={categoryFilter === "__ALL__"}
                     onClick={() => {
@@ -613,7 +922,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                         onDownloadPdfByCategory(categoryFilter);
                     }}
                     className="ml-2 bg-blue-600 text-white px-3 py-2 rounded-xl text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Descargar PDF de la categoría seleccionada"
                   >
                     PDF (Categoría)
                   </button>
@@ -642,13 +950,20 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Filtro de categoría + buscador */}
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
           <Tag className="w-4 h-4 text-slate-500" />
           <select
             className="outline-none text-sm bg-transparent"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
+            disabled={!!searchTerm.trim()}
+            title={
+              searchTerm.trim()
+                ? "El buscador está activo y busca en todos los productos"
+                : "Filtrar por categoría"
+            }
           >
             <option value="__ALL__">Todas las categorías</option>
             {categories.map((c) => (
@@ -659,7 +974,28 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           </select>
         </div>
 
-        {categoryFilter !== "__ALL__" && (
+        <div className="flex-1 min-w-[240px] flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+          <Search className="w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar producto por nombre, categoría, descripción o precio..."
+            className="w-full outline-none text-sm bg-transparent"
+          />
+          {searchTerm.trim() && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm("")}
+              className="text-slate-400 hover:text-slate-600"
+              title="Limpiar búsqueda"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {categoryFilter !== "__ALL__" && !searchTerm.trim() && (
           <button
             className="text-sm text-slate-600 hover:underline"
             onClick={() => setCategoryFilter("__ALL__")}
@@ -667,9 +1003,158 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
             Limpiar filtro
           </button>
         )}
+
+        {searchTerm.trim() && (
+          <p className="w-full text-xs text-blue-600">
+            Buscando en todos los productos, sin importar la categoría.
+          </p>
+        )}
       </div>
 
-      {/* Form */}
+      {/* ─── Modal preview de Excel ──────────────────────────────────────── */}
+      <AnimatePresence>
+        {excelPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4"
+            onClick={() => setExcelPreview(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header modal */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                    Importar desde Excel
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {excelPreview.fileName}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setExcelPreview(null)}
+                  className="p-2 rounded-full hover:bg-slate-100 text-slate-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Info */}
+              <div className="px-6 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center gap-3">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold text-sm">
+                  {excelPreview.mapped.length}
+                </span>
+                <p className="text-sm text-emerald-800">
+                  productos encontrados listos para importar.
+                  {excelPreview.rows.length - excelPreview.mapped.length > 0 && (
+                    <span className="text-amber-700 ml-1">
+                      ({excelPreview.rows.length - excelPreview.mapped.length} filas
+                      sin nombre ignoradas)
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* Tabla preview */}
+              <div className="overflow-auto flex-1 px-2 py-2">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-left">
+                      <th className="px-3 py-2 font-semibold text-slate-600 rounded-tl-lg">
+                        Nombre
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-600">
+                        Categoría
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-600">
+                        Precio
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-600 rounded-tr-lg">
+                        Stock
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {excelPreview.mapped.slice(0, 50).map((p, i) => (
+                      <tr
+                        key={i}
+                        className="border-t border-slate-100 hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-3 py-2 text-slate-900 font-medium max-w-[180px] truncate">
+                          {p.name}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500 max-w-[120px] truncate">
+                          {p.category || (
+                            <span className="text-slate-300 italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-blue-600 font-semibold whitespace-nowrap">
+                          {p.price !== undefined
+                            ? `$${Number(p.price).toLocaleString("es-CO")}`
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500">
+                          {p.quantity ?? 0}
+                        </td>
+                      </tr>
+                    ))}
+                    {excelPreview.mapped.length > 50 && (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="px-3 py-2 text-center text-xs text-slate-400 italic"
+                        >
+                          … y {excelPreview.mapped.length - 50} más
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Tip de columnas */}
+              <div className="px-6 py-3 bg-slate-50 border-t border-slate-100">
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  <span className="font-semibold text-slate-500">
+                    Columnas detectadas automáticamente:
+                  </span>{" "}
+                  nombre, precio, precio_anterior, descripcion, categoria, cantidad,
+                  destacado, oculto. También se aceptan sus variantes en inglés
+                  (name, price, category, etc.).
+                </p>
+              </div>
+
+              {/* Acciones */}
+              <div className="flex gap-3 px-6 py-4 border-t border-slate-100">
+                <button
+                  onClick={() => setExcelPreview(null)}
+                  className="flex-1 h-11 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmExcelImport}
+                  disabled={importingExcel}
+                  className="flex-1 h-11 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  Importar {excelPreview.mapped.length} productos
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Form agregar/editar */}
       <AnimatePresence>
         {(isAdding || isEditing) && (
           <motion.div
@@ -840,16 +1325,13 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     placeholder="Precio actual"
                     value={formData.price}
                     onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        price: e.target.value,
-                      }))
+                      setFormData((prev) => ({ ...prev, price: e.target.value }))
                     }
                     className="w-full pl-8 pr-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* NUEVO: Precio anterior */}
+                {/* Precio anterior */}
                 <div className="space-y-2">
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
@@ -966,7 +1448,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                 />
               </div>
 
-              {/* Image */}
+              {/* Imagen */}
               <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl p-4 hover:border-blue-400 transition-colors cursor-pointer relative bg-slate-50 min-h-[200px]">
                 {imagePreview ? (
                   <div className="relative w-full h-full flex flex-col items-center">
@@ -1011,35 +1493,36 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
               disabled={!formData.name || !formData.price}
               className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
             >
-              {isEditing ? (
-                <Check className="w-5 h-5" />
-              ) : (
-                <Plus className="w-5 h-5" />
-              )}
+              {isEditing ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
               {isEditing ? "Guardar Cambios" : "Crear Producto"}
             </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Products grid */}
+      {/* Paginador superior */}
+      {renderPagination()}
+
+      {/* Grid de productos */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
         <SortableContext
-          items={orderedProducts.map((p) => p.id)}
+          items={paginatedProducts.map((p) => p.id)}
           strategy={rectSortingStrategy}
         >
-          <p className="text-xs text-slate-400 mb-2">
-            Arrastra el ícono <span className="font-semibold">☰</span> para
-            ordenar los productos.
-          </p>
+          {totalProducts > 0 && (
+            <p className="text-xs text-slate-400 mb-2">
+              Arrastra el ícono <span className="font-semibold">☰</span> para
+              ordenar los productos visibles en esta página.
+            </p>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-[90%] sm:w-full mx-auto">
-            <AnimatePresence>
-              {orderedProducts.map((product) => {
+            <AnimatePresence mode="popLayout">
+              {paginatedProducts.map((product) => {
                 const originalPrice =
                   typeof (product as any).originalPrice === "number"
                     ? (product as any).originalPrice
@@ -1053,32 +1536,35 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       <motion.div
                         layout
                         layoutId={product.id}
-                        initial={{ opacity: 0, scale: 0.9 }}
+                        initial={{ opacity: 0, scale: 0.98 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
+                        exit={{ opacity: 0, scale: 0.98 }}
+                        transition={{ duration: 0.15 }}
                         className={`bg-white rounded-2xl p-4 ${product.hidden ? "opacity-40 grayscale" : ""
                           } shadow-sm border group relative transition-all ${editingId === product.id
                             ? "border-blue-500 ring-2 ring-blue-50"
                             : "border-slate-100"
                           }`}
                       >
-                        {/* BOTÓN PARA ARRASTRAR */}
+                        {/* Drag handle */}
                         <button
                           type="button"
                           title="Arrastra para ordenar"
                           className={`absolute top-2 left-2 z-10 p-2 rounded-full
                             bg-white/90 backdrop-blur border
                             text-slate-500 hover:text-slate-700 hover:bg-slate-100
-                            cursor-grab active:cursor-grabbing
-                            transition
-                            ${isDragging ? "ring-2 ring-blue-300" : "border-slate-200"}`}
+                            cursor-grab active:cursor-grabbing transition
+                            ${isDragging
+                              ? "ring-2 ring-blue-300"
+                              : "border-slate-200"
+                            }`}
                           {...dragAttributes}
                           {...dragListeners}
                         >
                           <GripVertical className="w-4 h-4" />
                         </button>
 
-                        {/* EDITAR / ELIMINAR */}
+                        {/* Editar / Eliminar */}
                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                           <button
                             onClick={() => handleOpenEdit(product)}
@@ -1096,14 +1582,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           </button>
                         </div>
 
-                        {/* Badge descuento */}
-                        {/* {discount !== null && (
-                          <div className="absolute top-3 right-32 z-10 rounded-full bg-green-100 px-2 py-1 text-[11px] font-bold text-green-700 border border-green-200">
-                            -{discount}%
-                          </div>
-                        )} */}
-
-                        {/* CONTENIDO */}
                         <div className="flex gap-4 items-center">
                           <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 relative">
                             {product.hidden && (
@@ -1128,10 +1606,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                             {product.featured && (
                               <div
                                 title="Producto destacado"
-                                className="absolute top-1 right-1 z-10 flex items-center justify-center
-                                w-4 h-4 rounded-full
-                                bg-yellow-400 text-white
-                                shadow-md ring-2 ring-white"
+                                className="absolute top-1 right-1 z-10 flex items-center justify-center w-4 h-4 rounded-full bg-yellow-400 text-white shadow-md ring-2 ring-white"
                               >
                                 <span className="text-sm leading-none">★</span>
                               </div>
@@ -1181,8 +1656,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                             <div
                               className="text-xs text-slate-500 line-clamp-2 mt-1 prose prose-sm max-w-none"
                               dangerouslySetInnerHTML={{
-                                __html:
-                                  product.description || "<p>Sin descripción</p>",
+                                __html: product.description || "<p>Sin descripción</p>",
                               }}
                             />
                           </div>
@@ -1198,15 +1672,20 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
               <div className="col-span-full py-20 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200">
                 <Package className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                 <p className="text-slate-400">
-                  {categoryFilter === "__ALL__"
-                    ? "Aún no tienes productos. ¡Agrega el primero!"
-                    : "No hay productos en esta categoría."}
+                  {searchTerm.trim()
+                    ? "No se encontraron productos con esa búsqueda."
+                    : categoryFilter === "__ALL__"
+                      ? "Aún no tienes productos. ¡Agrega el primero!"
+                      : "No hay productos en esta categoría."}
                 </p>
               </div>
             )}
           </div>
         </SortableContext>
       </DndContext>
+
+      {/* Paginador inferior */}
+      {renderPagination()}
     </div>
   );
 };
