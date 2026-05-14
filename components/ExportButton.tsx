@@ -26,7 +26,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   const [showShareInstructions, setShowShareInstructions] = useState(false);
   const [sharedFileName, setSharedFileName] = useState("");
 
-  // Barra de progreso
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState("");
 
@@ -65,25 +64,25 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     const resolvedQuality = opts?.quality ?? quality;
 
-    const canvasScale = resolvedQuality === "alta" ? 1.6 : 1.25;
+    // ── FIX iOS: escala reducida para evitar crash de memoria en Safari ──
+    const canvasScale = isIOS
+      ? 1.0  // iOS: escala baja para no exceder límite de canvas (~16MB)
+      : resolvedQuality === "alta" ? 1.6 : 1.25;
 
     const jpegQuality =
-      resolvedQuality === "alta" ? (isIOS ? 0.78 : 0.86) : isIOS ? 0.58 : 0.7;
+      resolvedQuality === "alta"
+        ? isIOS ? 0.72 : 0.86
+        : isIOS ? 0.55 : 0.7;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
+    // ── FIX iOS: waitFrames con setTimeout en lugar de rAF (Safari throttlea rAF) ──
     const waitFrames = (n = 2) =>
-      new Array(n).fill(0).reduce(
-        (p) =>
-          p.then(
-            () => new Promise<void>((r) => requestAnimationFrame(() => r())),
-          ),
-        Promise.resolve(),
-      );
+      new Promise<void>((r) => setTimeout(r, n * 32));
 
     const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-    const waitLoad = (img: HTMLImageElement, timeoutMs = 12000) => {
+    const waitLoad = (img: HTMLImageElement, timeoutMs = 8000) => {
       if (img.complete && img.naturalWidth > 0) return Promise.resolve();
 
       return new Promise<void>((res) => {
@@ -96,6 +95,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           res();
         };
 
+        // ── FIX iOS: timeout más corto para no bloquear indefinidamente ──
         const timer = setTimeout(done, timeoutMs);
         img.onload = done;
         img.onerror = done;
@@ -129,23 +129,37 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         reader.readAsDataURL(blob);
       });
 
-    const safeFetchBlob = async (src: string, timeoutMs = 12000) => {
+    const safeFetchBlob = async (src: string, timeoutMs = 8000) => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
         const resp = await fetch(src, {
           mode: "cors",
+          credentials: "omit",        // ── FIX iOS: sin credenciales evita preflight
+          cache: "force-cache",        // ── FIX iOS: reutiliza caché del browser
           signal: controller.signal,
         });
 
-        if (!resp.ok) {
-          throw new Error(`No se pudo cargar imagen: ${resp.status}`);
-        }
-
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.blob();
       } finally {
         clearTimeout(timer);
+      }
+    };
+
+    // ── FIX iOS: convertir imagen a data URL via canvas para forzar decode ──
+    const imageToDataUrlViaCanvas = (img: HTMLImageElement): string | null => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || img.width || 300;
+        canvas.height = img.naturalHeight || img.height || 300;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+        ctx.drawImage(img, 0, 0);
+        return canvas.toDataURL("image/jpeg", 0.8);
+      } catch {
+        return null;
       }
     };
 
@@ -193,66 +207,60 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const wanted = opts.category.trim().toLowerCase();
 
-        (
-          Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[]
-        ).forEach((card) => {
-          const cat = (
-            (card.dataset.category || "").trim() || "Sin categoría"
-          ).toLowerCase();
-
-          if (cat !== wanted) card.remove();
-        });
+        (Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[]).forEach(
+          (card) => {
+            const cat = (
+              (card.dataset.category || "").trim() || "Sin categoría"
+            ).toLowerCase();
+            if (cat !== wanted) card.remove();
+          }
+        );
       }
 
       updateProgress(12, "Organizando productos...");
 
-      const productsGrid = clone.querySelector(
-        ".products-grid",
-      ) as HTMLElement | null;
+      const productsGrid = clone.querySelector(".products-grid") as HTMLElement | null;
 
       if (productsGrid) {
         productsGrid.style.cssText += `
-        display:grid !important;
-        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        column-gap:24px !important;
-        row-gap:32px !important;
-        align-items:start !important;
-        width:100% !important;
-        box-sizing:border-box !important;
-      `;
+          display:grid !important;
+          grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+          column-gap:24px !important;
+          row-gap:32px !important;
+          align-items:start !important;
+          width:100% !important;
+          box-sizing:border-box !important;
+        `;
       }
 
-      (
-        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
-      ).forEach((media) => {
-        media.style.aspectRatio = "unset";
-        media.style.height = "500px";
-        media.style.minHeight = "500px";
-        media.style.maxHeight = "500px";
-      });
+      (Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
+        (media) => {
+          media.style.aspectRatio = "unset";
+          media.style.height = "500px";
+          media.style.minHeight = "500px";
+          media.style.maxHeight = "500px";
+        }
+      );
+
+      (Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]).forEach(
+        (el) => {
+          el.style.fontSize = "28px";
+          el.style.lineHeight = "1.2";
+        }
+      );
 
       (
-        Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]
-      ).forEach((el) => {
-        el.style.fontSize = "28px";
-        el.style.lineHeight = "1.2";
-      });
-
-      (
-        Array.from(
-          clone.querySelectorAll(".product-pdf .catalog-html"),
-        ) as HTMLElement[]
+        Array.from(clone.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]
       ).forEach((el) => {
         el.style.fontSize = "18px";
         el.style.lineHeight = "1.6";
       });
 
-      const imgs = Array.from(
-        clone.querySelectorAll("img"),
-      ) as HTMLImageElement[];
+      const imgs = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
 
       updateProgress(18, "Preparando imágenes...");
 
+      // ── Paso 1: asignar src a imágenes que solo tienen data-imgid ──
       await Promise.all(
         imgs.map(async (img) => {
           const id = img.dataset.imgid;
@@ -264,78 +272,39 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
           if (!img.src && id) {
             const url = await getImageUrl(id);
-
             if (url) {
               img.src = url;
-
-              if (url.startsWith("blob:")) {
-                objectUrlsToRevoke.push(url);
-              }
+              if (url.startsWith("blob:")) objectUrlsToRevoke.push(url);
             }
           }
-        }),
+        })
       );
 
-      updateProgress(25, "Cargando imágenes del catálogo...");
-
+      updateProgress(25, "Cargando imágenes...");
       await Promise.all(imgs.map((img) => waitLoad(img)));
 
-      updateProgress(35, "Validando imágenes...");
+      updateProgress(35, "Convirtiendo imágenes a data URL...");
 
-      const failedImgs = imgs.filter((img) => img.naturalWidth === 0);
-      const BATCH_SIZE = 8;
+      // ── FIX iOS CRÍTICO: convertir TODAS las imágenes a data URL antes de html2canvas ──
+      // Safari no puede acceder a imágenes cross-origin en canvas sin este paso
+      const BATCH_SIZE = isIOS ? 4 : 8; // iOS: batches más pequeños para no saturar memoria
 
-      for (let i = 0; i < failedImgs.length; i += BATCH_SIZE) {
-        const batch = failedImgs.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < imgs.length; i += BATCH_SIZE) {
+        const batch = imgs.slice(i, i + BATCH_SIZE);
 
         const currentProgress =
-          35 +
-          Math.min(
-            8,
-            ((i + batch.length) / Math.max(1, failedImgs.length)) * 8,
-          );
+          35 + Math.min(25, ((i + batch.length) / Math.max(1, imgs.length)) * 25);
 
-        updateProgress(currentProgress, "Reintentando imágenes pendientes...");
+        updateProgress(currentProgress, `Procesando imagen ${i + 1} de ${imgs.length}...`);
 
         await Promise.all(
           batch.map(async (img) => {
             const src = img.getAttribute("src") || "";
 
-            if (!src || src.startsWith("data:") || src.startsWith("blob:")) {
-              return;
-            }
+            if (!src) return;
 
-            try {
-              const blob = await safeFetchBlob(src, 12000);
-              const objUrl = URL.createObjectURL(blob);
-              objectUrlsToRevoke.push(objUrl);
-              img.crossOrigin = "anonymous";
-              img.src = objUrl;
-              await waitLoad(img, 12000);
-            } catch {
-              // No bloquear PDF por una imagen fallida
-            }
-          }),
-        );
-      }
-
-      updateProgress(45, "Procesando imágenes para PDF...");
-
-      const CONVERT_BATCH = 8;
-
-      for (let i = 0; i < imgs.length; i += CONVERT_BATCH) {
-        const batch = imgs.slice(i, i + CONVERT_BATCH);
-
-        const currentProgress =
-          45 + Math.min(15, ((i + batch.length) / Math.max(1, imgs.length)) * 15);
-
-        updateProgress(currentProgress, "Optimizando imágenes...");
-
-        await Promise.all(
-          batch.map(async (img) => {
-            const src = img.getAttribute("src") || "";
-
-            if (!src || src.startsWith("data:")) return;
+            // Si ya es data URL, no hacer nada
+            if (src.startsWith("data:")) return;
 
             try {
               let blob: Blob;
@@ -344,20 +313,28 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                 const resp = await fetch(src);
                 blob = await resp.blob();
               } else {
-                blob = await safeFetchBlob(src, 10000);
+                blob = await safeFetchBlob(src, 8000);
               }
 
               const dataUrl = await blobToDataUrl(blob);
               img.src = dataUrl;
               await waitLoad(img, 5000);
             } catch {
-              // Mantener src original si falla la conversión
+              // Intentar via canvas como último recurso en iOS
+              if (isIOS && img.complete && img.naturalWidth > 0) {
+                const canvasData = imageToDataUrlViaCanvas(img);
+                if (canvasData) img.src = canvasData;
+              }
+              // Si falla todo, continuar sin bloquear
             }
-          }),
+          })
         );
+
+        // ── FIX iOS: pequeña pausa entre batches para liberar memoria ──
+        if (isIOS) await waitMs(50);
       }
 
-      updateProgress(60, "Ajustando diseño del PDF...");
+      updateProgress(62, "Ajustando diseño del PDF...");
 
       imgs.forEach((img) => {
         img.style.width = "auto";
@@ -370,15 +347,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         img.style.margin = "0 auto";
       });
 
-      (
-        Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]
-      ).forEach((media) => {
-        media.style.aspectRatio = "4 / 3.5";
-        media.style.height = "auto";
-        media.style.minHeight = "230px";
-        media.style.maxHeight = "280px";
-        media.style.overflow = "hidden";
-      });
+      (Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
+        (media) => {
+          media.style.aspectRatio = "4 / 3.5";
+          media.style.height = "auto";
+          media.style.minHeight = "230px";
+          media.style.maxHeight = "280px";
+          media.style.overflow = "hidden";
+        }
+      );
 
       clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
         const el_ = el as HTMLElement;
@@ -391,7 +368,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.height = "30px";
 
         const span = el_.querySelector("span") as HTMLElement | null;
-
         if (span) {
           span.style.display = "flex";
           span.style.alignItems = "center";
@@ -429,7 +405,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.height = "28px";
 
         const span = el_.querySelector("span") as HTMLElement | null;
-
         if (span) {
           span.style.display = "flex";
           span.style.alignItems = "center";
@@ -455,7 +430,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingBottom = "0";
 
         const innerSpan = el_.querySelector("span") as HTMLElement | null;
-
         if (innerSpan) {
           innerSpan.style.display = "flex";
           innerSpan.style.alignItems = "center";
@@ -469,33 +443,32 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
       });
 
-      updateProgress(65, "Esperando fuentes y estilos...");
+      updateProgress(65, "Esperando fuentes...");
 
-      await waitFrames(10);
+      await waitMs(isIOS ? 300 : 100); // iOS necesita más tiempo para aplicar estilos
 
       if ("fonts" in document) {
         try {
-          await (document as any).fonts.ready;
+          await Promise.race([
+            (document as any).fonts.ready,
+            waitMs(2000), // ── FIX iOS: timeout de 2s para fonts.ready que se cuelga
+          ]);
         } catch {
-          // Ignorar si falla fonts.ready
+          // Ignorar
         }
       }
 
-      if (imgs.length > 30) {
-        await waitMs(Math.min(2500, imgs.length * 10));
-      }
-
-      await waitFrames(8);
+      await waitMs(isIOS ? 400 : 100);
 
       void clone.offsetHeight;
       void clone.getBoundingClientRect();
 
-      await waitFrames(4);
+      await waitMs(isIOS ? 200 : 50);
 
       const fullHeight = clone.scrollHeight || clone.offsetHeight;
       container.style.height = `${fullHeight + 20}px`;
 
-      await waitFrames(4);
+      await waitMs(100);
 
       updateProgress(70, "Preparando links clickeables...");
 
@@ -509,7 +482,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       const waFromDom =
         clone.querySelector('[data-store-whatsapp="true"]')?.textContent || "";
-
       const businessWa = normalizeWaNumber(businessWhatsapp || waFromDom, "57");
 
       updateProgress(73, "Creando documento PDF...");
@@ -530,7 +502,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 28;
 
       const cards = Array.from(
-        clone.querySelectorAll(".product-pdf"),
+        clone.querySelectorAll(".product-pdf")
       ) as HTMLElement[];
 
       type ProductRow = {
@@ -546,17 +518,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         const cardTop = Math.floor(pos.top);
 
         const existingRow = rows.find(
-          (row) => Math.abs(row.top - cardTop) <= ROW_TOLERANCE_PX,
+          (row) => Math.abs(row.top - cardTop) <= ROW_TOLERANCE_PX
         );
 
         if (existingRow) {
           existingRow.cards.push(card);
           existingRow.top = Math.min(existingRow.top, cardTop);
         } else {
-          rows.push({
-            top: cardTop,
-            cards: [card],
-          });
+          rows.push({ top: cardTop, cards: [card] });
         }
       });
 
@@ -568,7 +537,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         card.style.webkitColumnBreakInside = "avoid";
 
         const media = card.querySelector(".product-media") as HTMLElement | null;
-
         if (media) {
           media.style.aspectRatio = "4 / 3.5";
           media.style.height = "auto";
@@ -581,7 +549,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
 
         const img = card.querySelector("img") as HTMLImageElement | null;
-
         if (img) {
           img.style.width = "auto";
           img.style.height = "auto";
@@ -597,19 +564,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const controlHeaderFooter = (
         page: HTMLElement,
         includeHeader: boolean,
-        includeFooter: boolean,
+        includeFooter: boolean
       ) => {
         const pageGrid = page.querySelector(".products-grid") as HTMLElement | null;
 
-        /**
-         * Opción recomendada:
-         * Si puedes marcar tu header/footer en el JSX, usa:
-         * data-pdf-header="true"
-         * data-pdf-footer="true"
-         */
         page
           .querySelectorAll(
-            '[data-pdf-header="true"], .catalog-header, .pdf-header, header',
+            '[data-pdf-header="true"], .catalog-header, .pdf-header, header'
           )
           .forEach((el) => {
             (el as HTMLElement).style.display = includeHeader ? "" : "none";
@@ -617,36 +578,25 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         page
           .querySelectorAll(
-            '[data-pdf-footer="true"], .catalog-footer, .pdf-footer, footer',
+            '[data-pdf-footer="true"], .catalog-footer, .pdf-footer, footer'
           )
           .forEach((el) => {
             (el as HTMLElement).style.display = includeFooter ? "" : "none";
           });
 
-        /**
-         * Fallback estructural:
-         * Si no hay clases/data-attributes, ocultamos bloques antes/después
-         * del grid según corresponda.
-         */
         if (pageGrid) {
           let current: HTMLElement | null = pageGrid;
 
           while (current && current !== page) {
             const parent = current.parentElement as HTMLElement | null;
-
             if (!parent) break;
 
             const siblings = Array.from(parent.children) as HTMLElement[];
             const currentIndex = siblings.indexOf(current);
 
             siblings.forEach((sibling, index) => {
-              if (index < currentIndex && !includeHeader) {
-                sibling.style.display = "none";
-              }
-
-              if (index > currentIndex && !includeFooter) {
-                sibling.style.display = "none";
-              }
+              if (index < currentIndex && !includeHeader) sibling.style.display = "none";
+              if (index > currentIndex && !includeFooter) sibling.style.display = "none";
             });
 
             current = parent;
@@ -655,10 +605,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       };
 
       const makePage = (includeHeader: boolean) => {
-        /**
-         * Creamos la página desde el mismo clon del catálogo.
-         * Así se conserva el header, paddings, ancho y estilos originales.
-         */
         const page = clone.cloneNode(true) as HTMLElement;
 
         page.style.position = "absolute";
@@ -680,55 +626,39 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           (el as HTMLElement).style.display = "none";
         });
 
-        const pageGrid = page.querySelector(
-          ".products-grid",
-        ) as HTMLElement | null;
+        const pageGrid = page.querySelector(".products-grid") as HTMLElement | null;
 
         if (!pageGrid) {
           document.body.appendChild(page);
-
-          return {
-            page,
-            grid: page,
-          };
+          return { page, grid: page };
         }
 
         pageGrid.querySelectorAll(".product-pdf").forEach((el) => el.remove());
 
         pageGrid.style.cssText += `
-        display:grid !important;
-        grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-        column-gap:24px !important;
-        row-gap:32px !important;
-        align-items:start !important;
-        width:100% !important;
-        box-sizing:border-box !important;
-        background:#ffffff !important;
-      `;
+          display:grid !important;
+          grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+          column-gap:24px !important;
+          row-gap:32px !important;
+          align-items:start !important;
+          width:100% !important;
+          box-sizing:border-box !important;
+          background:#ffffff !important;
+        `;
 
-        /**
-         * Por defecto, al crear la página:
-         * - header depende de includeHeader.
-         * - footer se oculta temporalmente y se define después, cuando ya sabemos
-         *   si esta será la última página.
-         */
         controlHeaderFooter(page, includeHeader, false);
-
         document.body.appendChild(page);
 
-        return {
-          page,
-          grid: pageGrid,
-        };
+        return { page, grid: pageGrid };
       };
 
       const renderDomPageCanvas = async (pageEl: HTMLElement) => {
-        await waitFrames(2);
+        await waitMs(isIOS ? 150 : 50); // ── FIX iOS: dar tiempo al DOM antes de capturar
 
         return await html2canvas(pageEl, {
           scale: canvasScale,
           useCORS: true,
-          allowTaint: true,
+          allowTaint: false,          // ── FIX iOS: false evita taint en Safari
           backgroundColor: "#ffffff",
           logging: false,
           width: EXPORT_WIDTH_PX,
@@ -736,6 +666,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           scrollX: 0,
           scrollY: 0,
           removeContainer: true,
+          imageTimeout: 8000,         // ── FIX iOS: timeout explícito para imágenes
           onclone: (_clonedDoc, clonedEl) => {
             clonedEl.style.visibility = "visible";
             clonedEl.style.opacity = "1";
@@ -743,17 +674,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
             Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
               const htmlEl = el as HTMLElement;
-
               if (!htmlEl.style) return;
-
-              if (htmlEl.style.visibility === "hidden") {
-                htmlEl.style.visibility = "visible";
-              }
-
-              if (htmlEl.style.opacity === "0") {
-                htmlEl.style.opacity = "1";
-              }
-
+              if (htmlEl.style.visibility === "hidden") htmlEl.style.visibility = "visible";
+              if (htmlEl.style.opacity === "0") htmlEl.style.opacity = "1";
               htmlEl.style.animation = "none";
               htmlEl.style.transition = "none";
             });
@@ -766,50 +689,34 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const pushPageLink = (el: HTMLElement, url: string) => {
           if (!url || url === "#") return;
-
           const pos = getPos(el, page);
-
           if (pos.width <= 0 || pos.height <= 0) return;
-
-          pageLinks.push({
-            url,
-            ...pos,
-          });
+          pageLinks.push({ url, ...pos });
         };
 
         (
-          Array.from(
-            page.querySelectorAll('[data-pdf-link="product"]'),
-          ) as HTMLElement[]
+          Array.from(page.querySelectorAll('[data-pdf-link="product"]')) as HTMLElement[]
         ).forEach((el) => {
           const name = (el.dataset.productName || "").trim();
           const price = (el.dataset.productPrice || "").trim();
-
           if (!name) return;
 
           let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
 
           if (businessWa) {
             const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(
-              Number(price || 0),
+              Number(price || 0)
             )}`;
-
-            url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(
-              msg,
-            )}`;
+            url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
           }
 
           pushPageLink(el, url);
         });
 
-        (
-          Array.from(page.querySelectorAll("a[href]")) as HTMLAnchorElement[]
-        ).forEach((a) => {
+        (Array.from(page.querySelectorAll("a[href]")) as HTMLAnchorElement[]).forEach((a) => {
           const href = (a.getAttribute("href") || "").trim();
-
           if (!href || href === "#") return;
           if (a.matches('[data-pdf-link="product"]')) return;
-
           pushPageLink(a, href);
         });
 
@@ -838,7 +745,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
           rowClones.forEach((clonedCard) => grid.appendChild(clonedCard));
 
-          await waitFrames(1);
+          await waitMs(isIOS ? 80 : 16); // ── FIX iOS: tiempo para recalcular layout
 
           const currentHeight = page.scrollHeight || page.offsetHeight;
 
@@ -852,19 +759,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
 
         const isLastPage = rowIndex >= rows.length;
-
-        /**
-         * Aquí se aplica el comportamiento final:
-         * - Header solo en la página 1.
-         * - Footer solo en la última página.
-         */
         controlHeaderFooter(page, pageIndex === 0, isLastPage);
 
-        await waitFrames(2);
+        await waitMs(isIOS ? 200 : 50);
 
         updateProgress(
           75 + (pageIndex / Math.max(1, totalPagesEstimate)) * 20,
-          `Renderizando página ${pageIndex + 1}...`,
+          `Renderizando página ${pageIndex + 1}...`
         );
 
         const pageCanvas = await renderDomPageCanvas(page);
@@ -872,49 +773,38 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
         const pageHmm = Math.min(
           usableHmm,
-          pageCanvas.height / canvasScale / cssPxPerMm,
+          pageCanvas.height / canvasScale / cssPxPerMm
         );
 
-        if (pageIndex > 0) {
-          pdf.addPage();
-        }
+        if (pageIndex > 0) pdf.addPage();
 
-        pdf.addImage(
-          imgData,
-          "JPEG",
-          PDF_MARGIN_MM,
-          PDF_MARGIN_MM,
-          usableWmm,
-          pageHmm,
-          undefined,
-          "FAST",
-        );
+        pdf.addImage(imgData, "JPEG", PDF_MARGIN_MM, PDF_MARGIN_MM, usableWmm, pageHmm, undefined, "FAST");
 
         const pageLinkAreas = collectPageLinks(page);
-
         for (const la of pageLinkAreas) {
           pdf.link(
             PDF_MARGIN_MM + la.left / cssPxPerMm,
             PDF_MARGIN_MM + la.top / cssPxPerMm,
             la.width / cssPxPerMm,
             la.height / cssPxPerMm,
-            { url: la.url },
+            { url: la.url }
           );
         }
 
+        // ── FIX iOS: liberar canvas inmediatamente para recuperar memoria ──
         pageCanvas.width = 1;
         pageCanvas.height = 1;
 
         page.remove();
-
         pageIndex++;
 
         updateProgress(
           75 + (pageIndex / Math.max(1, totalPagesEstimate)) * 20,
-          `Página ${pageIndex} lista...`,
+          `Página ${pageIndex} lista...`
         );
 
-        await waitFrames(1);
+        // ── FIX iOS: pausa entre páginas para que Safari libere memoria del canvas ──
+        if (isIOS) await waitMs(300);
       }
 
       updateProgress(97, "Finalizando archivo...");
@@ -937,9 +827,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     }
   };
 
-  // ─── REEMPLAZA la función downloadBlob existente ───────────────────────────
   const downloadBlob = async (blob: Blob, outName: string) => {
-    // 1) En móvil, intentar Web Share API primero (más confiable en Android)
+    // 1) Móvil: Web Share API (más confiable en iOS y Android)
     if (isMobile && typeof navigator.share === "function") {
       const file = new File([blob], outName, { type: "application/pdf" });
       const canShare =
@@ -953,16 +842,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             text: "Te comparto el catálogo en PDF 📄",
             files: [file],
           });
-          return; // ✅ Éxito
+          return;
         } catch (err: any) {
-          if (err?.name === "AbortError") return; // Usuario canceló
+          if (err?.name === "AbortError") return;
           // Continúa con fallback
         }
       }
     }
 
-    // 2) Fallback: data URL base64 (funciona en Samsung Browser, WebView, etc.)
-    //    Evita el problema de URL.createObjectURL que abre el PDF en el visor
+    // 2) Fallback: data URL base64 (evita el visor nativo de Android/iOS)
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -978,7 +866,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       document.body.appendChild(a);
       a.click();
       setTimeout(() => a.remove(), 500);
-      return; // ✅ Éxito
+      return;
     } catch {
       // Continúa con último fallback
     }
@@ -1008,7 +896,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgress(100);
       setProgressText("Descargando PDF...");
 
-      downloadBlob(blob, outName);
+      await downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF.");
@@ -1036,7 +924,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgress(100);
       setProgressText("Descargando PDF...");
 
-      downloadBlob(blob, outName);
+      await downloadBlob(blob, outName);
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF por categoría.");
@@ -1058,9 +946,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgressText("PDF listo para compartir...");
 
       if (isMobile) {
-        const file = new File([blob], fn, {
-          type: "application/pdf",
-        });
+        const file = new File([blob], fn, { type: "application/pdf" });
 
         const canShareFile =
           typeof navigator.share === "function" &&
@@ -1074,11 +960,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               text: "Te comparto el catálogo en PDF 📄",
               files: [file],
             });
-
             return;
           } catch (shareErr: any) {
             if (shareErr?.name === "AbortError") return;
-
             console.warn("share() falló, usando fallback:", shareErr);
           }
         }
@@ -1097,7 +981,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
   return (
     <>
-      {/* Overlay de progreso */}
       {loading && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 px-5">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
@@ -1105,7 +988,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               <p className="text-base font-bold text-slate-800">
                 Generando catálogo PDF
               </p>
-
               <p className="mt-1 text-sm text-slate-500">
                 {progressText || "Preparando archivo..."}
               </p>
@@ -1119,13 +1001,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             </div>
 
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-slate-400">
-                No cierres esta ventana
-              </span>
-
-              <span className="text-sm font-semibold text-slate-700">
-                {progress}%
-              </span>
+              <span className="text-xs text-slate-400">No cierres esta ventana</span>
+              <span className="text-sm font-semibold text-slate-700">{progress}%</span>
             </div>
           </div>
         </div>
@@ -1144,12 +1021,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-xl">
                 ✅
               </div>
-
               <div>
                 <p className="font-bold text-slate-800 text-base leading-tight">
                   ¡PDF listo y descargado!
                 </p>
-
                 <p className="text-xs text-slate-400">{sharedFileName}</p>
               </div>
             </div>
@@ -1161,17 +1036,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             <ol className="space-y-3 mb-5">
               {[
                 { n: "1", text: "Abre WhatsApp en tu dispositivo" },
-                {
-                  n: "2",
-                  text: "Elige el contacto o grupo al que quieres enviar",
-                },
+                { n: "2", text: "Elige el contacto o grupo al que quieres enviar" },
                 {
                   n: "3",
                   text: (
                     <>
-                      Toca el ícono de clip{" "}
-                      <span className="font-semibold">📎</span> y selecciona{" "}
-                      <span className="font-semibold">Documento</span>
+                      Toca el ícono de clip <span className="font-semibold">📎</span> y
+                      selecciona <span className="font-semibold">Documento</span>
                     </>
                   ),
                 },
@@ -1192,7 +1063,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">
                     {n}
                   </span>
-
                   <span className="text-sm text-slate-700">{text}</span>
                 </li>
               ))}
@@ -1201,10 +1071,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             <button
               onClick={() => {
                 setShowShareInstructions(false);
-                window.open(
-                  isMobile ? "whatsapp://" : "https://web.whatsapp.com",
-                  "_blank",
-                );
+                window.open(isMobile ? "whatsapp://" : "https://web.whatsapp.com", "_blank");
               }}
               className="w-full h-12 rounded-xl font-semibold text-white bg-emerald-500 hover:bg-emerald-600 active:scale-[0.99] transition mb-2"
             >
@@ -1228,28 +1095,25 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white/85 backdrop-blur shadow-lg p-2">
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs text-slate-500 font-medium">
-                Calidad del PDF
-              </span>
+              <span className="text-xs text-slate-500 font-medium">Calidad del PDF</span>
 
               <div className="flex rounded-lg overflow-hidden border border-black/10 text-xs font-semibold">
                 <button
                   onClick={() => setQuality("normal")}
                   disabled={loading}
                   className={`px-3 py-1.5 transition ${quality === "normal"
-                    ? "bg-slate-800 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
+                      ? "bg-slate-800 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                 >
                   Normal
                 </button>
-
                 <button
                   onClick={() => setQuality("alta")}
                   disabled={loading}
                   className={`px-3 py-1.5 transition ${quality === "alta"
-                    ? "bg-slate-800 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
+                      ? "bg-slate-800 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                 >
                   Alta
@@ -1289,7 +1153,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                 disabled={loading}
               >
                 <option value="__ALL__">Selecciona categoría…</option>
-
                 {categories.map((c) => (
                   <option key={c} value={c}>
                     {c}
