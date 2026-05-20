@@ -533,6 +533,20 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       toStr(hiddenRaw).toLowerCase() === "si" ||
       toStr(hiddenRaw).toLowerCase() === "sí" ||
       toStr(hiddenRaw).toLowerCase() === "true";
+    const image = toStr(
+      getField(
+        row,
+        "imagen",
+        "image",
+        "foto",
+        "photo",
+        "url_imagen",
+        "image_url",
+        "url",
+        "picture",
+        "thumbnail"
+      )
+    );
 
     return {
       id: crypto.randomUUID?.() ?? `${Date.now()}-${index}`,
@@ -542,7 +556,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       description,
       category,
       quantity,
-      image: "",
+      image,
       imageId: "",
       order: products.length + index,
       featured,
@@ -1126,7 +1140,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                   <span className="font-semibold text-slate-500">
                     Columnas detectadas automáticamente:
                   </span>{" "}
-                  nombre, precio, precio_anterior, descripcion, categoria, cantidad,
+                  nombre, precio, precio_anterior, descripcion, categoria, cantidad,imagen,
                   destacado, oculto. También se aceptan sus variantes en inglés
                   (name, price, category, etc.).
                 </p>
