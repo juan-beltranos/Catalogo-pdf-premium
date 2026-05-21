@@ -59,8 +59,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     updateProgress(3, "Preparando catálogo...");
 
-    const EXPORT_WIDTH_PX = 1200;
-    const PDF_MARGIN_MM = 10;
+    // Ajuste de tamaño PDF:
+    // Antes estaba en 1200px y se comprimía demasiado al meterlo en A4.
+    // 980px mantiene buena calidad, pero hace imágenes y textos ~20% más visibles.
+    const EXPORT_WIDTH_PX = 980;
+    const PDF_MARGIN_MM = 8;
 
     const resolvedQuality = opts?.quality ?? quality;
 
@@ -225,35 +228,141 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         productsGrid.style.cssText += `
           display:grid !important;
           grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-          column-gap:24px !important;
-          row-gap:32px !important;
+          column-gap:28px !important;
+          row-gap:38px !important;
           align-items:start !important;
           width:100% !important;
           box-sizing:border-box !important;
         `;
       }
 
+      // Header PDF un poco más grande y legible
+      // No cambia la lógica del PDF; solo aumenta logo, título, redes y botón/teléfono del encabezado.
+      const styleHeaderForPdf = (root: HTMLElement) => {
+        const headerEls = Array.from(
+          root.querySelectorAll(
+            '[data-pdf-header="true"], .catalog-header, .pdf-header, header'
+          )
+        ) as HTMLElement[];
+
+        headerEls.forEach((header) => {
+          header.style.minHeight = "170px";
+          header.style.padding = "18px 28px";
+          header.style.boxSizing = "border-box";
+          header.style.backgroundSize = "cover";
+          header.style.backgroundPosition = "center";
+          header.style.overflow = "visible";
+
+          (Array.from(header.querySelectorAll("h1, h2")) as HTMLElement[]).forEach(
+            (title) => {
+              title.style.fontSize = "30px";
+              title.style.lineHeight = "1.15";
+              title.style.fontWeight = "800";
+              title.style.margin = "0";
+            }
+          );
+
+          (
+            Array.from(
+              header.querySelectorAll(
+                '[data-store-name="true"], .store-name, .business-name, .brand-title, .catalog-title'
+              )
+            ) as HTMLElement[]
+          ).forEach((title) => {
+            title.style.fontSize = "26px";
+            title.style.lineHeight = "1.2";
+            title.style.fontWeight = "800";
+          });
+
+          (
+            Array.from(
+              header.querySelectorAll(
+                '[data-store-subtitle="true"], .store-subtitle, .business-subtitle, .catalog-subtitle'
+              )
+            ) as HTMLElement[]
+          ).forEach((subtitle) => {
+            subtitle.style.fontSize = "15px";
+            subtitle.style.lineHeight = "1.25";
+          });
+
+          const headerImgs = Array.from(header.querySelectorAll("img")) as HTMLImageElement[];
+          headerImgs.forEach((img) => {
+            const looksLikeLogo =
+              img.matches('[data-store-logo="true"], [data-logo="true"], .store-logo img, .logo img, .brand-logo img') ||
+              (img.naturalWidth > 0 &&
+                img.naturalHeight > 0 &&
+                img.naturalWidth <= 300 &&
+                img.naturalHeight <= 300);
+
+            if (looksLikeLogo) {
+              img.style.width = "86px";
+              img.style.height = "86px";
+              img.style.minWidth = "86px";
+              img.style.minHeight = "86px";
+              img.style.maxWidth = "86px";
+              img.style.maxHeight = "86px";
+              img.style.objectFit = "contain";
+              img.style.display = "block";
+            } else {
+              img.style.width = "100%";
+              img.style.minHeight = "170px";
+              img.style.maxHeight = "210px";
+              img.style.objectFit = "cover";
+            }
+          });
+
+          (Array.from(header.querySelectorAll("svg")) as SVGElement[]).forEach((svg) => {
+            svg.style.width = "24px";
+            svg.style.height = "24px";
+          });
+
+          (Array.from(header.querySelectorAll("a")) as HTMLElement[]).forEach((a) => {
+            a.style.fontSize = "17px";
+            a.style.lineHeight = "1";
+          });
+
+          (
+            Array.from(
+              header.querySelectorAll(
+                '[data-store-whatsapp="true"], a[href*="wa.me"], a[href*="whatsapp"], .whatsapp, .phone, .social-link'
+              )
+            ) as HTMLElement[]
+          ).forEach((el) => {
+            el.style.minHeight = "42px";
+            el.style.padding = "10px 18px";
+            el.style.fontSize = "18px";
+            el.style.lineHeight = "1";
+            el.style.display = "inline-flex";
+            el.style.alignItems = "center";
+            el.style.justifyContent = "center";
+            el.style.gap = "8px";
+          });
+        });
+      };
+
+      styleHeaderForPdf(clone);
+
       (Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
         (media) => {
           media.style.aspectRatio = "unset";
-          media.style.height = "500px";
-          media.style.minHeight = "500px";
-          media.style.maxHeight = "500px";
+          media.style.height = "520px";
+          media.style.minHeight = "520px";
+          media.style.maxHeight = "520px";
         }
       );
 
       (Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]).forEach(
         (el) => {
-          el.style.fontSize = "28px";
-          el.style.lineHeight = "1.2";
+          el.style.fontSize = "34px";
+          el.style.lineHeight = "1.22";
         }
       );
 
       (
         Array.from(clone.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = "18px";
-        el.style.lineHeight = "1.6";
+        el.style.fontSize = "22px";
+        el.style.lineHeight = "1.55";
       });
 
       const imgs = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
@@ -349,13 +458,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       (Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
         (media) => {
-          media.style.aspectRatio = "4 / 3.5";
+          media.style.aspectRatio = "4 / 3.6";
           media.style.height = "auto";
-          media.style.minHeight = "230px";
-          media.style.maxHeight = "280px";
+          media.style.minHeight = "320px";
+          media.style.maxHeight = "380px";
           media.style.overflow = "hidden";
         }
       );
+
+      // Reaplicar al final para que los estilos globales de imágenes no achiquen el header.
+      styleHeaderForPdf(clone);
 
       clone.querySelectorAll('[data-price-inline="true"]').forEach((el) => {
         const el_ = el as HTMLElement;
@@ -365,7 +477,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.lineHeight = "1";
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
-        el_.style.height = "30px";
+        el_.style.height = "36px";
+        el_.style.fontSize = "18px";
 
         const span = el_.querySelector("span") as HTMLElement | null;
         if (span) {
@@ -388,7 +501,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.alignItems = "center";
         el_.style.justifyContent = "center";
         el_.style.lineHeight = "1";
-        el_.style.height = "40px";
+        el_.style.height = "44px";
+        el_.style.fontSize = "17px";
         el_.style.paddingTop = "1px";
         el_.style.paddingBottom = "0";
         el_.style.gap = "3px";
@@ -402,7 +516,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.lineHeight = "1";
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
-        el_.style.height = "28px";
+        el_.style.height = "34px";
+        el_.style.fontSize = "16px";
 
         const span = el_.querySelector("span") as HTMLElement | null;
         if (span) {
@@ -425,7 +540,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.alignItems = "center";
         el_.style.justifyContent = "center";
         el_.style.lineHeight = "1";
-        el_.style.height = "40px";
+        el_.style.height = "46px";
+        el_.style.fontSize = "16px";
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
 
@@ -499,7 +615,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
       const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
-      const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 28;
+      const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 18;
 
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf")
@@ -538,10 +654,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const media = card.querySelector(".product-media") as HTMLElement | null;
         if (media) {
-          media.style.aspectRatio = "4 / 3.5";
+          media.style.aspectRatio = "4 / 3.6";
           media.style.height = "auto";
-          media.style.minHeight = "230px";
-          media.style.maxHeight = "280px";
+          media.style.minHeight = "320px";
+          media.style.maxHeight = "380px";
           media.style.overflow = "hidden";
           media.style.display = "flex";
           media.style.alignItems = "center";
@@ -638,8 +754,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         pageGrid.style.cssText += `
           display:grid !important;
           grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-          column-gap:24px !important;
-          row-gap:32px !important;
+          column-gap:28px !important;
+          row-gap:38px !important;
           align-items:start !important;
           width:100% !important;
           box-sizing:border-box !important;
@@ -1102,8 +1218,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                   onClick={() => setQuality("normal")}
                   disabled={loading}
                   className={`px-3 py-1.5 transition ${quality === "normal"
-                      ? "bg-slate-800 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                    ? "bg-slate-800 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                 >
                   Normal
@@ -1112,8 +1228,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                   onClick={() => setQuality("alta")}
                   disabled={loading}
                   className={`px-3 py-1.5 transition ${quality === "alta"
-                      ? "bg-slate-800 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                    ? "bg-slate-800 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                 >
                   Alta

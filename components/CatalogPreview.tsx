@@ -206,14 +206,6 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     line-height: 1 !important;
   }
 
-  /* ajuste leve solo para que el header no se vea más pequeño al exportar */
-  .pdf-mode h1 {
-    font-size: 1.08em !important;
-  }
-
-  .pdf-mode [data-store-whatsapp="true"] {
-    font-size: 1.04em !important;
-  }
 `}</style>
 
         <div
@@ -277,10 +269,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
                 <div
                   className={`flex items-center gap-3 ${isMinimalist
-                      ? hasHeaderImage
-                        ? 'text-white'
-                        : 'text-slate-600'
-                      : 'text-white'
+                    ? hasHeaderImage
+                      ? 'text-white'
+                      : 'text-slate-600'
+                    : 'text-white'
                     }`}
                 >
                   {storeInfo.whatsapp && (
@@ -292,10 +284,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       title="WhatsApp"
                       data-pdf-link="social"
                       className={`p-2 rounded-full transition-colors ${isMinimalist
-                          ? hasHeaderImage
-                            ? 'hover:bg-white/20'
-                            : 'hover:bg-slate-100'
-                          : 'hover:bg-white/15'
+                        ? hasHeaderImage
+                          ? 'hover:bg-white/20'
+                          : 'hover:bg-slate-100'
+                        : 'hover:bg-white/15'
                         }`}
                     >
                       <MessageCircle className="w-5 h-5" />
@@ -311,10 +303,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       aria-label="Facebook"
                       title={facebookLabel(storeInfo.facebook)}
                       className={`p-2 rounded-full transition-colors ${isMinimalist
-                          ? hasHeaderImage
-                            ? 'hover:bg-white/20'
-                            : 'hover:bg-slate-100'
-                          : 'hover:bg-white/15'
+                        ? hasHeaderImage
+                          ? 'hover:bg-white/20'
+                          : 'hover:bg-slate-100'
+                        : 'hover:bg-white/15'
                         }`}
                     >
                       <Facebook className="w-5 h-5" />
@@ -330,10 +322,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       aria-label="Instagram"
                       title={instagramLabel(storeInfo.instagram)}
                       className={`p-2 rounded-full transition-colors ${isMinimalist
-                          ? hasHeaderImage
-                            ? 'hover:bg-white/20'
-                            : 'hover:bg-slate-100'
-                          : 'hover:bg-white/15'
+                        ? hasHeaderImage
+                          ? 'hover:bg-white/20'
+                          : 'hover:bg-slate-100'
+                        : 'hover:bg-white/15'
                         }`}
                     >
                       <Instagram className="w-5 h-5" />
@@ -345,10 +337,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {storeInfo.whatsapp && (
                 <div
                   className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold ${isMinimalist
-                      ? hasHeaderImage
-                        ? 'bg-white/90 text-slate-900 border border-white/40'
-                        : 'bg-slate-100 text-slate-900 border border-slate-200'
-                      : 'bg-white text-slate-900 border border-white/40'
+                    ? hasHeaderImage
+                      ? 'bg-white/90 text-slate-900 border border-white/40'
+                      : 'bg-slate-100 text-slate-900 border border-slate-200'
+                    : 'bg-white text-slate-900 border border-white/40'
                     }`}
                 >
                   <Phone className="w-4 h-4" />
