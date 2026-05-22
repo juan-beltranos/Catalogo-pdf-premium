@@ -677,35 +677,68 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
       };
 
-      const getVisibleContentHeight = (page: HTMLElement) => {
+      const isElementVisibleForPdf = (el: HTMLElement) => {
+        const style = window.getComputedStyle(el);
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          style.opacity !== "0" &&
+          el.offsetWidth > 0 &&
+          el.offsetHeight > 0
+        );
+      };
+
+      // IMPORTANTE:
+      // En móvil algunos navegadores conservan min-height/100vh o alturas heredadas
+      // aunque visualmente no haya contenido. Si medimos page.scrollHeight o escaneamos
+      // todo el árbol, Safari/Chrome móvil reportan una página mucho más alta y por eso
+      // terminan entrando solo 2 productos.
+      // Esta función mide únicamente lo que realmente debe salir en el PDF:
+      // encabezado visible + tarjetas visibles + footer visible.
+      const getPdfContentHeight = (page: HTMLElement, grid?: HTMLElement | null) => {
         const pageTop = page.getBoundingClientRect().top;
         let bottom = 0;
 
-        const isVisible = (el: HTMLElement) => {
-          const style = window.getComputedStyle(el);
-          return (
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            style.opacity !== "0" &&
-            el.offsetWidth > 0 &&
-            el.offsetHeight > 0
-          );
-        };
-
-        const scan = (el: HTMLElement) => {
-          if (!isVisible(el)) return;
-
+        const addBottom = (el: HTMLElement | null) => {
+          if (!el || !isElementVisibleForPdf(el)) return;
           const rect = el.getBoundingClientRect();
           bottom = Math.max(bottom, rect.bottom - pageTop);
-
-          Array.from(el.children).forEach((child) => {
-            scan(child as HTMLElement);
-          });
         };
 
-        scan(page);
+        // Encabezados visibles, si esta página los incluye.
+        (
+          Array.from(
+            page.querySelectorAll(
+              '[data-pdf-header="true"], .catalog-header, .pdf-header, header'
+            )
+          ) as HTMLElement[]
+        ).forEach(addBottom);
 
-        return Math.ceil(bottom);
+        const pageGrid = grid || (page.querySelector(".products-grid") as HTMLElement | null);
+
+        if (pageGrid && isElementVisibleForPdf(pageGrid)) {
+          const cardsInPage = Array.from(
+            pageGrid.querySelectorAll(".product-pdf")
+          ) as HTMLElement[];
+
+          if (cardsInPage.length > 0) {
+            cardsInPage.forEach(addBottom);
+          } else {
+            addBottom(pageGrid);
+          }
+        }
+
+        // Footers visibles, solo en la última página.
+        (
+          Array.from(
+            page.querySelectorAll(
+              '[data-pdf-footer="true"], .catalog-footer, .pdf-footer, footer'
+            )
+          ) as HTMLElement[]
+        ).forEach(addBottom);
+
+        // Un pequeño margen de seguridad para sombras/bordes sin inflar la página.
+        return Math.ceil(bottom + 4);
       };
 
       const collapseGridParents = (page: HTMLElement) => {
@@ -919,7 +952,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           await waitMs(isIOS ? 80 : 16); // ── FIX iOS: tiempo para recalcular layout
 
           collapseGridParents(page);
-          const currentHeight = getVisibleContentHeight(page);
+          const currentHeight = getPdfContentHeight(page, grid);
 
           if (currentHeight > pageHeightCssPx && rowsAdded > 0) {
             rowClones.forEach((clonedCard) => clonedCard.remove());
@@ -938,7 +971,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const contentHeightCssPx = Math.min(
           pageHeightCssPx,
-          Math.max(1, getVisibleContentHeight(page) + 8)
+          Math.max(1, getPdfContentHeight(page, grid) + 4)
         );
 
         page.style.minHeight = "0";
