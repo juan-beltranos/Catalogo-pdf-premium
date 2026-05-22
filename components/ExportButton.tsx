@@ -615,7 +615,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
       const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
-      const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 18;
+      const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 6;
 
       const cards = Array.from(
         clone.querySelectorAll(".product-pdf")
@@ -675,6 +675,58 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           img.style.display = "block";
           img.style.margin = "0 auto";
         }
+      };
+
+      const getVisibleContentHeight = (page: HTMLElement) => {
+        const pageTop = page.getBoundingClientRect().top;
+        let bottom = 0;
+
+        const isVisible = (el: HTMLElement) => {
+          const style = window.getComputedStyle(el);
+          return (
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            style.opacity !== "0" &&
+            el.offsetWidth > 0 &&
+            el.offsetHeight > 0
+          );
+        };
+
+        const scan = (el: HTMLElement) => {
+          if (!isVisible(el)) return;
+
+          const rect = el.getBoundingClientRect();
+          bottom = Math.max(bottom, rect.bottom - pageTop);
+
+          Array.from(el.children).forEach((child) => {
+            scan(child as HTMLElement);
+          });
+        };
+
+        scan(page);
+
+        return Math.ceil(bottom);
+      };
+
+      const collapseGridParents = (page: HTMLElement) => {
+        const pageGrid = page.querySelector(".products-grid") as HTMLElement | null;
+        if (!pageGrid) return;
+
+        let current: HTMLElement | null = pageGrid;
+
+        while (current && current !== page) {
+          current.style.minHeight = "0";
+          current.style.height = "auto";
+          current.style.maxHeight = "none";
+          current.style.overflow = "visible";
+          current.style.alignContent = "start";
+          current = current.parentElement as HTMLElement | null;
+        }
+
+        page.style.minHeight = "0";
+        page.style.height = "auto";
+        page.style.maxHeight = "none";
+        page.style.overflow = "visible";
       };
 
       const controlHeaderFooter = (
@@ -763,12 +815,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         `;
 
         controlHeaderFooter(page, includeHeader, false);
+        collapseGridParents(page);
         document.body.appendChild(page);
 
         return { page, grid: pageGrid };
       };
 
-      const renderDomPageCanvas = async (pageEl: HTMLElement) => {
+      const renderDomPageCanvas = async (pageEl: HTMLElement, captureHeightCssPx: number) => {
         await waitMs(isIOS ? 150 : 50); // ── FIX iOS: dar tiempo al DOM antes de capturar
 
         return await html2canvas(pageEl, {
@@ -778,7 +831,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           backgroundColor: "#ffffff",
           logging: false,
           width: EXPORT_WIDTH_PX,
+          height: captureHeightCssPx,
           windowWidth: EXPORT_WIDTH_PX,
+          windowHeight: captureHeightCssPx,
           scrollX: 0,
           scrollY: 0,
           removeContainer: true,
@@ -863,7 +918,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
           await waitMs(isIOS ? 80 : 16); // ── FIX iOS: tiempo para recalcular layout
 
-          const currentHeight = page.scrollHeight || page.offsetHeight;
+          collapseGridParents(page);
+          const currentHeight = getVisibleContentHeight(page);
 
           if (currentHeight > pageHeightCssPx && rowsAdded > 0) {
             rowClones.forEach((clonedCard) => clonedCard.remove());
@@ -876,20 +932,31 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const isLastPage = rowIndex >= rows.length;
         controlHeaderFooter(page, pageIndex === 0, isLastPage);
+        collapseGridParents(page);
 
         await waitMs(isIOS ? 200 : 50);
+
+        const contentHeightCssPx = Math.min(
+          pageHeightCssPx,
+          Math.max(1, getVisibleContentHeight(page) + 8)
+        );
+
+        page.style.minHeight = "0";
+        page.style.height = `${contentHeightCssPx}px`;
+        page.style.maxHeight = `${contentHeightCssPx}px`;
+        page.style.overflow = "hidden";
 
         updateProgress(
           75 + (pageIndex / Math.max(1, totalPagesEstimate)) * 20,
           `Renderizando página ${pageIndex + 1}...`
         );
 
-        const pageCanvas = await renderDomPageCanvas(page);
+        const pageCanvas = await renderDomPageCanvas(page, contentHeightCssPx);
 
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
         const pageHmm = Math.min(
           usableHmm,
-          pageCanvas.height / canvasScale / cssPxPerMm
+          contentHeightCssPx / cssPxPerMm
         );
 
         if (pageIndex > 0) pdf.addPage();
