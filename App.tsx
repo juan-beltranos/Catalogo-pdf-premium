@@ -30,6 +30,10 @@ export const App: React.FC = () => {
     updateStoreInfo({ templateId: id });
   };
 
+  const handlePdfProductsPerPageChange = (value: number) => {
+    updateStoreInfo({ pdfProductsPerPage: value } as any);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-24">
       {/* Top Header */}
@@ -53,8 +57,8 @@ export const App: React.FC = () => {
             <button
               onClick={() => setViewMode('editor')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${viewMode === 'editor'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
                 }`}
             >
               <Edit3 className="w-4 h-4" />
@@ -64,8 +68,8 @@ export const App: React.FC = () => {
             <button
               onClick={() => setViewMode('preview')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${viewMode === 'preview'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
                 }`}
             >
               <Eye className="w-4 h-4" />
@@ -98,6 +102,8 @@ export const App: React.FC = () => {
                 <TemplateSelector
                   selectedId={storeInfo.templateId}
                   onSelect={handleTemplateSelect}
+                  pdfProductsPerPage={(storeInfo as any).pdfProductsPerPage ?? 4}
+                  onPdfProductsPerPageChange={handlePdfProductsPerPageChange}
                 />
 
                 <StoreForm storeInfo={storeInfo} onUpdate={updateStoreInfo} />
@@ -189,6 +195,7 @@ export const App: React.FC = () => {
           fileName={storeInfo.name || 'mi-catalogo'}
           products={products}
           businessWhatsapp={storeInfo.whatsapp || ''}
+          pdfProductsPerPage={(storeInfo as any).pdfProductsPerPage ?? 4}
         />
       )}
     </div>

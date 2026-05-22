@@ -29,6 +29,7 @@ export interface StoreInfo {
   imageFit?: ImageFit;
   headerMode?: 'color' | 'image';
   headerImage?: string;
+  pdfProductsPerPage?: number;
 }
 
 export type ViewMode = 'editor' | 'preview';

@@ -12,6 +12,7 @@ interface ExportButtonProps {
   fileName: string;
   products: Product[];
   businessWhatsapp: string;
+  pdfProductsPerPage?: number;
 }
 
 export const ExportButton: React.FC<ExportButtonProps> = ({
@@ -19,6 +20,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   fileName,
   products,
   businessWhatsapp,
+  pdfProductsPerPage = 4,
 }) => {
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
@@ -65,14 +67,37 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     const EXPORT_WIDTH_PX = 980;
     const PDF_MARGIN_MM = 8;
 
-    // Tamaños fijos para el PDF.
-    // Esto evita que en móvil se hereden reglas responsive como min-height, 100vh,
-    // gaps grandes o tarjetas de una sola columna que inflan la medición de cada página.
-    const PDF_GRID_COLUMNS = 2;
-    const PDF_GRID_COLUMN_GAP_PX = 28;
-    const PDF_GRID_ROW_GAP_PX = 38;
-    const PDF_PRODUCT_MEDIA_MIN_HEIGHT_PX = 300;
-    const PDF_PRODUCT_MEDIA_MAX_HEIGHT_PX = 340;
+    const PDF_PRODUCTS_PER_PAGE = Math.min(12, Math.max(1, Math.round(Number(pdfProductsPerPage) || 4)));
+
+    const getPdfGridColumns = (productsPerPage: number) => {
+      if (productsPerPage <= 1) return 1;
+      return 2;
+    };
+
+    const PDF_GRID_COLUMNS = getPdfGridColumns(PDF_PRODUCTS_PER_PAGE);
+    const PDF_ROWS_PER_PAGE = Math.max(1, Math.ceil(PDF_PRODUCTS_PER_PAGE / PDF_GRID_COLUMNS));
+    const PDF_GRID_COLUMN_GAP_PX = PDF_PRODUCTS_PER_PAGE <= 1 ? 0 : PDF_PRODUCTS_PER_PAGE <= 2 ? 24 : 28;
+    const PDF_GRID_ROW_GAP_PX = PDF_PRODUCTS_PER_PAGE <= 2 ? 26 : PDF_PRODUCTS_PER_PAGE <= 4 ? 34 : 22;
+
+    const getPdfMediaSize = (productsPerPage: number) => {
+      if (productsPerPage <= 1) return { min: 620, max: 760 };
+      if (productsPerPage <= 2) return { min: 440, max: 540 };
+      if (productsPerPage <= 4) return { min: 300, max: 360 };
+      if (productsPerPage <= 6) return { min: 210, max: 260 };
+      return { min: 150, max: 200 };
+    };
+
+    const PDF_PRODUCT_MEDIA = getPdfMediaSize(PDF_PRODUCTS_PER_PAGE);
+
+    const getPdfTextSizes = (productsPerPage: number) => {
+      if (productsPerPage <= 1) return { title: 38, description: 23, price: 22, badge: 17, action: 17 };
+      if (productsPerPage <= 2) return { title: 32, description: 20, price: 20, badge: 16, action: 16 };
+      if (productsPerPage <= 4) return { title: 26, description: 16, price: 18, badge: 15, action: 15 };
+      if (productsPerPage <= 6) return { title: 20, description: 13, price: 15, badge: 12, action: 13 };
+      return { title: 16, description: 11, price: 13, badge: 11, action: 11 };
+    };
+
+    const PDF_TEXT = getPdfTextSizes(PDF_PRODUCTS_PER_PAGE);
 
     const resolvedQuality = opts?.quality ?? quality;
 
@@ -236,9 +261,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       if (productsGrid) {
         productsGrid.style.cssText += `
           display:grid !important;
-          grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-          column-gap:28px !important;
-          row-gap:38px !important;
+          grid-template-columns:repeat(${PDF_GRID_COLUMNS},minmax(0,1fr)) !important;
+          column-gap:${PDF_GRID_COLUMN_GAP_PX}px !important;
+          row-gap:${PDF_GRID_ROW_GAP_PX}px !important;
           align-items:start !important;
           width:100% !important;
           box-sizing:border-box !important;
@@ -349,108 +374,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         });
       };
 
-      const forceDesktopPdfLayout = (root: HTMLElement) => {
-        root.style.width = `${EXPORT_WIDTH_PX}px`;
-        root.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
-        root.style.minWidth = `${EXPORT_WIDTH_PX}px`;
-        root.style.margin = "0";
-        root.style.paddingLeft = "0";
-        root.style.paddingRight = "0";
-        root.style.boxSizing = "border-box";
-        root.style.background = "#ffffff";
-        root.style.transform = "none";
-        root.style.minHeight = "0";
-        root.style.height = "auto";
-        root.style.maxHeight = "none";
-        root.style.overflow = "visible";
-
-        (Array.from(root.querySelectorAll(".products-grid")) as HTMLElement[]).forEach(
-          (grid) => {
-            grid.style.display = "grid";
-            grid.style.gridTemplateColumns = `repeat(${PDF_GRID_COLUMNS}, minmax(0, 1fr))`;
-            grid.style.gridAutoRows = "auto";
-            grid.style.columnGap = `${PDF_GRID_COLUMN_GAP_PX}px`;
-            grid.style.rowGap = `${PDF_GRID_ROW_GAP_PX}px`;
-            grid.style.gap = `${PDF_GRID_ROW_GAP_PX}px ${PDF_GRID_COLUMN_GAP_PX}px`;
-            grid.style.alignItems = "start";
-            grid.style.alignContent = "start";
-            grid.style.justifyItems = "stretch";
-            grid.style.justifyContent = "stretch";
-            grid.style.width = "100%";
-            grid.style.maxWidth = "100%";
-            grid.style.minWidth = "0";
-            grid.style.minHeight = "0";
-            grid.style.height = "auto";
-            grid.style.maxHeight = "none";
-            grid.style.boxSizing = "border-box";
-            grid.style.overflow = "visible";
-            grid.style.background = "#ffffff";
-          }
-        );
-
-        (Array.from(root.querySelectorAll(".product-pdf")) as HTMLElement[]).forEach(
-          (card) => {
-            card.style.width = "100%";
-            card.style.maxWidth = "none";
-            card.style.minWidth = "0";
-            card.style.minHeight = "0";
-            card.style.height = "auto";
-            card.style.maxHeight = "none";
-            card.style.margin = "0";
-            card.style.alignSelf = "start";
-            card.style.justifySelf = "stretch";
-            card.style.boxSizing = "border-box";
-            card.style.breakInside = "avoid";
-            card.style.pageBreakInside = "avoid";
-            card.style.webkitColumnBreakInside = "avoid";
-            card.style.overflow = "hidden";
-          }
-        );
-
-        (Array.from(root.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
-          (media) => {
-            media.style.aspectRatio = "4 / 3.6";
-            media.style.width = "100%";
-            media.style.height = "auto";
-            media.style.minHeight = `${PDF_PRODUCT_MEDIA_MIN_HEIGHT_PX}px`;
-            media.style.maxHeight = `${PDF_PRODUCT_MEDIA_MAX_HEIGHT_PX}px`;
-            media.style.overflow = "hidden";
-            media.style.display = "flex";
-            media.style.alignItems = "center";
-            media.style.justifyContent = "center";
-            media.style.boxSizing = "border-box";
-          }
-        );
-
-        (Array.from(root.querySelectorAll("img")) as HTMLImageElement[]).forEach(
-          (img) => {
-            img.style.width = "auto";
-            img.style.height = "auto";
-            img.style.maxWidth = "100%";
-            img.style.maxHeight = "100%";
-            img.style.objectFit = "contain";
-            img.style.objectPosition = "center";
-            img.style.display = "block";
-            img.style.margin = "0 auto";
-          }
-        );
-      };
-
       styleHeaderForPdf(clone);
-      forceDesktopPdfLayout(clone);
 
       (Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
         (media) => {
           media.style.aspectRatio = "unset";
-          media.style.height = "520px";
-          media.style.minHeight = "520px";
-          media.style.maxHeight = "520px";
+          media.style.height = `${PDF_PRODUCT_MEDIA.max}px`;
+          media.style.minHeight = `${PDF_PRODUCT_MEDIA.max}px`;
+          media.style.maxHeight = `${PDF_PRODUCT_MEDIA.max}px`;
         }
       );
 
       (Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]).forEach(
         (el) => {
-          el.style.fontSize = "34px";
+          el.style.fontSize = `${PDF_TEXT.title}px`;
           el.style.lineHeight = "1.22";
         }
       );
@@ -458,7 +395,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       (
         Array.from(clone.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = "22px";
+        el.style.fontSize = `${PDF_TEXT.description}px`;
         el.style.lineHeight = "1.55";
       });
 
@@ -557,13 +494,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         (media) => {
           media.style.aspectRatio = "4 / 3.6";
           media.style.height = "auto";
-          media.style.minHeight = `${PDF_PRODUCT_MEDIA_MIN_HEIGHT_PX}px`;
-          media.style.maxHeight = `${PDF_PRODUCT_MEDIA_MAX_HEIGHT_PX}px`;
+          media.style.minHeight = `${PDF_PRODUCT_MEDIA.min}px`;
+          media.style.maxHeight = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.overflow = "hidden";
         }
       );
-
-      forceDesktopPdfLayout(clone);
 
       // Reaplicar al final para que los estilos globales de imágenes no achiquen el header.
       styleHeaderForPdf(clone);
@@ -577,7 +512,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
         el_.style.height = "36px";
-        el_.style.fontSize = "18px";
+        el_.style.fontSize = `${PDF_TEXT.price}px`;
 
         const span = el_.querySelector("span") as HTMLElement | null;
         if (span) {
@@ -601,7 +536,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.justifyContent = "center";
         el_.style.lineHeight = "1";
         el_.style.height = "44px";
-        el_.style.fontSize = "17px";
+        el_.style.fontSize = `${Math.max(11, PDF_TEXT.badge)}px`;
         el_.style.paddingTop = "1px";
         el_.style.paddingBottom = "0";
         el_.style.gap = "3px";
@@ -616,7 +551,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
         el_.style.height = "34px";
-        el_.style.fontSize = "16px";
+        el_.style.fontSize = `${PDF_TEXT.badge}px`;
 
         const span = el_.querySelector("span") as HTMLElement | null;
         if (span) {
@@ -640,7 +575,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.justifyContent = "center";
         el_.style.lineHeight = "1";
         el_.style.height = "46px";
-        el_.style.fontSize = "16px";
+        el_.style.fontSize = `${PDF_TEXT.badge}px`;
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
 
@@ -679,9 +614,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       void clone.getBoundingClientRect();
 
       await waitMs(isIOS ? 200 : 50);
-
-      forceDesktopPdfLayout(clone);
-      styleHeaderForPdf(clone);
 
       const fullHeight = clone.scrollHeight || clone.offsetHeight;
       container.style.height = `${fullHeight + 20}px`;
@@ -724,29 +656,35 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       ) as HTMLElement[];
 
       type ProductRow = {
+        top: number;
         cards: HTMLElement[];
       };
 
-      // En escritorio las filas se forman por la grilla de 2 columnas.
-      // En móvil, medir offsetTop puede leer reglas responsive del viewport real
-      // y crear saltos enormes. Por eso armamos las filas por orden del DOM:
-      // 2 productos por fila, igual que el PDF de escritorio.
+      // Las filas del PDF NO se calculan con offsetTop del navegador móvil.
+      // Se crean por orden de productos y por la cantidad de columnas configurada,
+      // para que el PDF sea igual en escritorio y móvil.
       const rows: ProductRow[] = [];
       for (let i = 0; i < cards.length; i += PDF_GRID_COLUMNS) {
-        rows.push({ cards: cards.slice(i, i + PDF_GRID_COLUMNS) });
+        rows.push({
+          top: i,
+          cards: cards.slice(i, i + PDF_GRID_COLUMNS),
+        });
       }
 
       const styleProductCardForPdf = (card: HTMLElement) => {
         card.style.breakInside = "avoid";
         card.style.pageBreakInside = "avoid";
-        card.style.webkitColumnBreakInside = "avoid";
+        (card.style as any).webkitColumnBreakInside = "avoid";
+        card.style.width = "100%";
+        card.style.maxWidth = "100%";
+        card.style.boxSizing = "border-box";
 
         const media = card.querySelector(".product-media") as HTMLElement | null;
         if (media) {
           media.style.aspectRatio = "4 / 3.6";
           media.style.height = "auto";
-          media.style.minHeight = `${PDF_PRODUCT_MEDIA_MIN_HEIGHT_PX}px`;
-          media.style.maxHeight = `${PDF_PRODUCT_MEDIA_MAX_HEIGHT_PX}px`;
+          media.style.minHeight = `${PDF_PRODUCT_MEDIA.min}px`;
+          media.style.maxHeight = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.overflow = "hidden";
           media.style.display = "flex";
           media.style.alignItems = "center";
@@ -927,9 +865,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         pageGrid.style.cssText += `
           display:grid !important;
-          grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-          column-gap:28px !important;
-          row-gap:38px !important;
+          grid-template-columns:repeat(${PDF_GRID_COLUMNS},minmax(0,1fr)) !important;
+          column-gap:${PDF_GRID_COLUMN_GAP_PX}px !important;
+          row-gap:${PDF_GRID_ROW_GAP_PX}px !important;
           align-items:start !important;
           width:100% !important;
           box-sizing:border-box !important;
@@ -938,8 +876,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         controlHeaderFooter(page, includeHeader, false);
         collapseGridParents(page);
-        forceDesktopPdfLayout(page);
-        styleHeaderForPdf(page);
         document.body.appendChild(page);
 
         return { page, grid: pageGrid };
@@ -1020,7 +956,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       let pageIndex = 0;
       let rowIndex = 0;
-      const totalPagesEstimate = Math.max(1, Math.ceil(rows.length / 2));
+      const totalPagesEstimate = Math.max(1, Math.ceil(cards.length / PDF_PRODUCTS_PER_PAGE));
 
       updateProgress(75, `Renderizando página 1 de ${totalPagesEstimate}...`);
 
@@ -1030,6 +966,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         let rowsAdded = 0;
 
         while (rowIndex < rows.length) {
+          if (rowsAdded >= PDF_ROWS_PER_PAGE) break;
+
           const currentRow = rows[rowIndex];
 
           const rowClones: HTMLElement[] = currentRow.cards.map((card) => {
@@ -1039,8 +977,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           });
 
           rowClones.forEach((clonedCard) => grid.appendChild(clonedCard));
-          forceDesktopPdfLayout(page);
-          styleHeaderForPdf(page);
 
           await waitMs(isIOS ? 80 : 16); // ── FIX iOS: tiempo para recalcular layout
 
@@ -1059,8 +995,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         const isLastPage = rowIndex >= rows.length;
         controlHeaderFooter(page, pageIndex === 0, isLastPage);
         collapseGridParents(page);
-        forceDesktopPdfLayout(page);
-        styleHeaderForPdf(page);
 
         await waitMs(isIOS ? 200 : 50);
 
@@ -1089,13 +1023,22 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         if (pageIndex > 0) pdf.addPage();
 
-        pdf.addImage(imgData, "JPEG", PDF_MARGIN_MM, PDF_MARGIN_MM, usableWmm, pageHmm, undefined, "FAST");
+        // Centrado vertical de las páginas internas:
+        // La primera página conserva el hero/header arriba.
+        // Las demás páginas centran el bloque real de productos dentro del área útil A4,
+        // evitando que cuando hay 1 o 2 tarjetas quede todo pegado arriba con mucho aire abajo.
+        const pageYmm =
+          pageIndex === 0
+            ? PDF_MARGIN_MM
+            : PDF_MARGIN_MM + Math.max(0, (usableHmm - pageHmm) / 2);
+
+        pdf.addImage(imgData, "JPEG", PDF_MARGIN_MM, pageYmm, usableWmm, pageHmm, undefined, "FAST");
 
         const pageLinkAreas = collectPageLinks(page);
         for (const la of pageLinkAreas) {
           pdf.link(
             PDF_MARGIN_MM + la.left / cssPxPerMm,
-            PDF_MARGIN_MM + la.top / cssPxPerMm,
+            pageYmm + la.top / cssPxPerMm,
             la.width / cssPxPerMm,
             la.height / cssPxPerMm,
             { url: la.url }
