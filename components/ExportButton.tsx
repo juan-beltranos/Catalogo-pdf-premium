@@ -90,7 +90,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     const PDF_PRODUCT_MEDIA = getPdfMediaSize(PDF_PRODUCTS_PER_PAGE);
 
     const getPdfTextSizes = (productsPerPage: number) => {
-      if (productsPerPage <= 1) return { title: 38, description: 23, price: 22, badge: 17, action: 17 };
+      if (productsPerPage <= 1) return { title: 38, description: 31, price: 22, badge: 17, action: 17 };
       if (productsPerPage <= 2) return { title: 32, description: 20, price: 20, badge: 16, action: 16 };
       if (productsPerPage <= 4) return { title: 26, description: 16, price: 18, badge: 15, action: 15 };
       if (productsPerPage <= 6) return { title: 20, description: 13, price: 15, badge: 12, action: 13 };
@@ -395,8 +395,18 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       (
         Array.from(clone.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]
       ).forEach((el) => {
-        el.style.fontSize = `${PDF_TEXT.description}px`;
-        el.style.lineHeight = "1.55";
+        // Para 1 producto por página, la descripción debe verse más grande,
+        // pero siempre por debajo del tamaño del título.
+        const safeDescriptionSize = Math.min(PDF_TEXT.description, PDF_TEXT.title - 4);
+        el.style.fontSize = `${safeDescriptionSize}px`;
+        el.style.lineHeight = PDF_PRODUCTS_PER_PAGE <= 1 ? "1.42" : "1.55";
+
+        // Algunos textos vienen dentro de p, span, strong, li, etc. con estilos propios.
+        // Forzamos la herencia para que en móvil/tablet/escritorio se vea igual en el PDF.
+        (Array.from(el.querySelectorAll("p, span, strong, em, b, i, li, div")) as HTMLElement[]).forEach((child) => {
+          child.style.fontSize = "inherit";
+          child.style.lineHeight = "inherit";
+        });
       });
 
       const imgs = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
