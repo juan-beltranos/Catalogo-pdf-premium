@@ -70,24 +70,140 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     const PDF_PRODUCTS_PER_PAGE = Math.min(12, Math.max(1, Math.round(Number(pdfProductsPerPage) || 4)));
 
     const getPdfGridColumns = (productsPerPage: number) => {
+      // Grid fijo para PDF, independiente del breakpoint del celular/tablet.
+      // Se escoge la cantidad de columnas para que el número configurado por el administrador
+      // se distribuya de forma natural en A4 vertical:
+      // 1 = 1x1, 2 = 2x1, 4 = 2x2, 6 = 3x2, 8 = 4x2, 9 = 3x3, 12 = 4x3.
       if (productsPerPage <= 1) return 1;
-      return 2;
+      if (productsPerPage === 2) return 2;
+      if (productsPerPage === 3) return 3;
+      if (productsPerPage <= 4) return 2;
+      if (productsPerPage <= 6) return 3;
+      if (productsPerPage <= 8) return 4;
+      if (productsPerPage === 9) return 3;
+      return 4;
     };
 
     const PDF_GRID_COLUMNS = getPdfGridColumns(PDF_PRODUCTS_PER_PAGE);
     const PDF_ROWS_PER_PAGE = Math.max(1, Math.ceil(PDF_PRODUCTS_PER_PAGE / PDF_GRID_COLUMNS));
-    const PDF_GRID_COLUMN_GAP_PX = PDF_PRODUCTS_PER_PAGE <= 1 ? 0 : PDF_PRODUCTS_PER_PAGE <= 2 ? 24 : 28;
-    const PDF_GRID_ROW_GAP_PX = PDF_PRODUCTS_PER_PAGE <= 2 ? 26 : PDF_PRODUCTS_PER_PAGE <= 4 ? 34 : 22;
 
-    const getPdfMediaSize = (productsPerPage: number) => {
-      if (productsPerPage <= 1) return { min: 620, max: 760 };
-      if (productsPerPage <= 2) return { min: 440, max: 540 };
-      if (productsPerPage <= 4) return { min: 300, max: 360 };
-      if (productsPerPage <= 6) return { min: 210, max: 260 };
-      return { min: 150, max: 200 };
+    const getPdfGridGap = (productsPerPage: number) => {
+      if (productsPerPage <= 1) return { column: 0, row: 0 };
+      if (productsPerPage <= 2) return { column: 24, row: 26 };
+      if (productsPerPage <= 4) return { column: 28, row: 34 };
+      if (productsPerPage <= 6) return { column: 22, row: 24 };
+      if (productsPerPage <= 9) return { column: 18, row: 18 };
+      return { column: 14, row: 14 };
     };
 
-    const PDF_PRODUCT_MEDIA = getPdfMediaSize(PDF_PRODUCTS_PER_PAGE);
+    const PDF_GRID_GAP = getPdfGridGap(PDF_PRODUCTS_PER_PAGE);
+    const PDF_GRID_COLUMN_GAP_PX = PDF_GRID_GAP.column;
+    const PDF_GRID_ROW_GAP_PX = PDF_GRID_GAP.row;
+
+    const getPdfMediaSize = (productsPerPage: number, columns: number) => {
+      // Tamaño flexible de imagen según el layout configurado.
+      // Mientras más productos por página, más se reduce imagen y texto para que no haya cortes.
+      const columnWidth =
+        columns <= 1
+          ? EXPORT_WIDTH_PX
+          : Math.floor((EXPORT_WIDTH_PX - PDF_GRID_COLUMN_GAP_PX * (columns - 1)) / columns);
+
+      if (productsPerPage <= 1) return { min: 620, max: 760 };
+
+      const maxByCount =
+        productsPerPage <= 2 ? 520 :
+          productsPerPage <= 3 ? 430 :
+            productsPerPage <= 4 ? 350 :
+              productsPerPage <= 6 ? 260 :
+                productsPerPage <= 8 ? 220 :
+                  productsPerPage <= 9 ? 185 :
+                    160;
+
+      const maxByWidth = Math.round(columnWidth * 0.82);
+      const max = Math.max(120, Math.min(maxByCount, maxByWidth));
+      const min = Math.max(105, Math.round(max * 0.78));
+
+      return { min, max };
+    };
+
+    const PDF_PRODUCT_MEDIA = getPdfMediaSize(PDF_PRODUCTS_PER_PAGE, PDF_GRID_COLUMNS);
+
+    const PDF_BADGE_OR_CONTROL_SELECTOR =
+      '[data-category-badge="true"], [data-stock-badge="true"], [data-price-inline="true"], [data-action-hint="true"], [data-pdf-link="product"]';
+
+    const isBadgeOrControl = (el: HTMLElement | null) => {
+      return !!el && el.matches(PDF_BADGE_OR_CONTROL_SELECTOR);
+    };
+
+    const getMediaInnerWrapper = (media: HTMLElement): HTMLElement | null => {
+      // No usar firstElementChild a ciegas.
+      // En algunas tarjetas el primer hijo del contenedor de imagen es el badge de categoría.
+      // Si se le aplica width/height:100%, el badge se vuelve un óvalo gigante.
+      const img = media.querySelector("img") as HTMLElement | null;
+
+      if (img) {
+        let candidate: HTMLElement = img;
+
+        while (
+          candidate.parentElement &&
+          candidate.parentElement !== media &&
+          media.contains(candidate.parentElement)
+        ) {
+          candidate = candidate.parentElement as HTMLElement;
+        }
+
+        if (candidate !== img && !isBadgeOrControl(candidate)) return candidate;
+      }
+
+      const child = (Array.from(media.children) as HTMLElement[]).find(
+        (el) => !isBadgeOrControl(el) && !!el.querySelector("img")
+      );
+
+      return child || null;
+    };
+
+    const getProductMediaEls = (root: ParentNode): HTMLElement[] => {
+      const isNotBadgeOrControl = (el: HTMLElement) => {
+        return !isBadgeOrControl(el);
+      };
+
+      const explicit = (
+        Array.from(
+          root.querySelectorAll(
+            '.product-media, [data-product-media="true"], [data-product-image-wrap="true"]'
+          )
+        ) as HTMLElement[]
+      ).filter((el) => isNotBadgeOrControl(el));
+
+      // En algunas plantillas el contenedor real de imagen no trae una clase fija.
+      // Antes se tomaba el primer hijo de la tarjeta, pero en plantillas con badge
+      // de categoría ese primer hijo puede ser el badge; por eso el badge se estiraba
+      // y salía como un óvalo gigante encima de la imagen.
+      // Ahora inferimos el contenedor subiendo desde la imagen hasta el hijo directo
+      // de .product-pdf que contiene la imagen, ignorando badges, precio y botones.
+      const inferred = (
+        Array.from(root.querySelectorAll(".product-pdf")) as HTMLElement[]
+      )
+        .map((card) => {
+          const img = card.querySelector("img") as HTMLElement | null;
+          if (!img) return null;
+
+          let candidate: HTMLElement | null = img;
+          while (
+            candidate.parentElement &&
+            candidate.parentElement !== card &&
+            card.contains(candidate.parentElement)
+          ) {
+            candidate = candidate.parentElement as HTMLElement;
+          }
+
+          if (!candidate || !isNotBadgeOrControl(candidate)) return null;
+          return candidate;
+        })
+        .filter((el): el is HTMLElement => !!el);
+
+      return Array.from(new Set([...explicit, ...inferred]));
+    };
 
     const getPdfTextSizes = (productsPerPage: number) => {
       if (productsPerPage <= 1) return { title: 38, description: 31, price: 22, badge: 17, action: 17 };
@@ -376,12 +492,25 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       styleHeaderForPdf(clone);
 
-      (Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
+      getProductMediaEls(clone).forEach(
         (media) => {
           media.style.aspectRatio = "unset";
           media.style.height = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.minHeight = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.maxHeight = `${PDF_PRODUCT_MEDIA.max}px`;
+          media.style.overflow = "hidden";
+          media.style.display = "flex";
+          media.style.alignItems = "center";
+          media.style.justifyContent = "center";
+          media.style.boxSizing = "border-box";
+          const inner = getMediaInnerWrapper(media);
+          if (inner) {
+            inner.style.width = "100%";
+            inner.style.height = "100%";
+            inner.style.minHeight = "0";
+            inner.style.maxHeight = "100%";
+            inner.style.overflow = "hidden";
+          }
         }
       );
 
@@ -500,13 +629,25 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         img.style.margin = "0 auto";
       });
 
-      (Array.from(clone.querySelectorAll(".product-media")) as HTMLElement[]).forEach(
+      getProductMediaEls(clone).forEach(
         (media) => {
-          media.style.aspectRatio = "4 / 3.6";
-          media.style.height = "auto";
+          media.style.aspectRatio = "unset";
+          media.style.height = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.minHeight = `${PDF_PRODUCT_MEDIA.min}px`;
           media.style.maxHeight = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.overflow = "hidden";
+          media.style.display = "flex";
+          media.style.alignItems = "center";
+          media.style.justifyContent = "center";
+          media.style.boxSizing = "border-box";
+          const inner = getMediaInnerWrapper(media);
+          if (inner) {
+            inner.style.width = "100%";
+            inner.style.height = "100%";
+            inner.style.minHeight = "0";
+            inner.style.maxHeight = "100%";
+            inner.style.overflow = "hidden";
+          }
         }
       );
 
@@ -561,6 +702,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         el_.style.paddingTop = "0";
         el_.style.paddingBottom = "0";
         el_.style.height = "34px";
+        el_.style.width = "fit-content";
+        el_.style.minWidth = "0";
+        el_.style.maxWidth = "calc(100% - 24px)";
+        el_.style.flex = "0 0 auto";
+        el_.style.alignSelf = "flex-start";
         el_.style.fontSize = `${PDF_TEXT.badge}px`;
 
         const span = el_.querySelector("span") as HTMLElement | null;
@@ -687,19 +833,37 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         (card.style as any).webkitColumnBreakInside = "avoid";
         card.style.width = "100%";
         card.style.maxWidth = "100%";
+        card.style.minWidth = "0";
+        card.style.minHeight = "0";
+        card.style.height = "auto";
+        card.style.maxHeight = "none";
         card.style.boxSizing = "border-box";
+        card.style.overflow = "visible";
 
-        const media = card.querySelector(".product-media") as HTMLElement | null;
-        if (media) {
-          media.style.aspectRatio = "4 / 3.6";
-          media.style.height = "auto";
+        const mediaEls = getProductMediaEls(card);
+        mediaEls.forEach((media) => {
+          media.style.aspectRatio = "unset";
+          media.style.height = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.minHeight = `${PDF_PRODUCT_MEDIA.min}px`;
           media.style.maxHeight = `${PDF_PRODUCT_MEDIA.max}px`;
           media.style.overflow = "hidden";
           media.style.display = "flex";
           media.style.alignItems = "center";
           media.style.justifyContent = "center";
-        }
+          media.style.boxSizing = "border-box";
+
+          const inner = getMediaInnerWrapper(media);
+          if (inner) {
+            inner.style.width = "100%";
+            inner.style.height = "100%";
+            inner.style.minHeight = "0";
+            inner.style.maxHeight = "100%";
+            inner.style.display = "flex";
+            inner.style.alignItems = "center";
+            inner.style.justifyContent = "center";
+            inner.style.overflow = "hidden";
+          }
+        });
 
         const img = card.querySelector("img") as HTMLImageElement | null;
         if (img) {
@@ -712,6 +876,41 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           img.style.display = "block";
           img.style.margin = "0 auto";
         }
+      };
+
+      const compactPageToFit = async (page: HTMLElement, grid: HTMLElement, maxHeightPx: number) => {
+        const factors = [0.92, 0.84, 0.76, 0.68];
+
+        for (const factor of factors) {
+          getProductMediaEls(grid).forEach((media) => {
+            const nextMin = Math.max(120, Math.round(PDF_PRODUCT_MEDIA.min * factor));
+            const nextMax = Math.max(nextMin, Math.round(PDF_PRODUCT_MEDIA.max * factor));
+            media.style.minHeight = `${nextMin}px`;
+            media.style.maxHeight = `${nextMax}px`;
+            media.style.height = `${nextMax}px`;
+          });
+
+          (Array.from(grid.querySelectorAll(".product-pdf h3")) as HTMLElement[]).forEach((el) => {
+            el.style.fontSize = `${Math.max(14, Math.round(PDF_TEXT.title * Math.max(0.78, factor)))}px`;
+            el.style.lineHeight = "1.18";
+          });
+
+          (Array.from(grid.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]).forEach((el) => {
+            const nextSize = Math.max(10, Math.round(PDF_TEXT.description * Math.max(0.82, factor)));
+            el.style.fontSize = `${Math.min(nextSize, Math.max(10, PDF_TEXT.title - 4))}px`;
+            el.style.lineHeight = "1.35";
+            (Array.from(el.querySelectorAll("p, span, strong, em, b, i, li, div")) as HTMLElement[]).forEach((child) => {
+              child.style.fontSize = "inherit";
+              child.style.lineHeight = "inherit";
+            });
+          });
+
+          await waitMs(isIOS ? 60 : 16);
+          collapseGridParents(page);
+          if (getPdfContentHeight(page, grid) <= maxHeightPx) return true;
+        }
+
+        return getPdfContentHeight(page, grid) <= maxHeightPx;
       };
 
       const isElementVisibleForPdf = (el: HTMLElement) => {
@@ -991,11 +1190,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           await waitMs(isIOS ? 80 : 16); // ── FIX iOS: tiempo para recalcular layout
 
           collapseGridParents(page);
-          const currentHeight = getPdfContentHeight(page, grid);
+          let currentHeight = getPdfContentHeight(page, grid);
 
           if (currentHeight > pageHeightCssPx && rowsAdded > 0) {
-            rowClones.forEach((clonedCard) => clonedCard.remove());
-            break;
+            const fitted = await compactPageToFit(page, grid, pageHeightCssPx);
+            currentHeight = getPdfContentHeight(page, grid);
+
+            if (!fitted || currentHeight > pageHeightCssPx) {
+              rowClones.forEach((clonedCard) => clonedCard.remove());
+              break;
+            }
           }
 
           rowsAdded++;
