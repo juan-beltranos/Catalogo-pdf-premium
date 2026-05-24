@@ -28,6 +28,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   const [showShareInstructions, setShowShareInstructions] = useState(false);
   const [sharedFileName, setSharedFileName] = useState("");
 
+  // Cuando Android/Chrome demora generando el PDF, puede perderse el gesto del usuario
+  // y navigator.share lanza NotAllowedError. Guardamos el archivo listo para compartir
+  // y mostramos un segundo botón; ese toque sí cuenta como gesto directo del usuario.
+  const [showNativeShareReady, setShowNativeShareReady] = useState(false);
+  const [pendingShareFile, setPendingShareFile] = useState<File | null>(null);
+  const [pendingShareTitle, setPendingShareTitle] = useState("Catálogo");
+  const [pendingShareText, setPendingShareText] = useState("Te comparto el catálogo en PDF");
+
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState("");
 
@@ -1422,14 +1430,63 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     window.open(`https://web.whatsapp.com/send?text=${message}`, "_blank", "noopener,noreferrer");
   };
 
+  const isUserGestureError = (error: any) => {
+    return (
+      error?.name === "NotAllowedError" ||
+      String(error?.message || error || "")
+        .toLowerCase()
+        .includes("user gesture")
+    );
+  };
+
+  const canSharePdfFile = (file: File) => {
+    return (
+      typeof navigator.share === "function" &&
+      (typeof navigator.canShare !== "function" ||
+        navigator.canShare({ files: [file] }))
+    );
+  };
+
+  const sharePdfFileNow = async (file: File, title: string, text: string) => {
+    // Este método debe llamarse directamente desde un onClick cuando el PDF ya existe.
+    // Así Android/Chrome conserva el gesto del usuario y WhatsApp recibe el PDF adjunto.
+    await navigator.share({
+      title,
+      text,
+      files: [file],
+    });
+  };
+
+  const handleSharePreparedPdf = async () => {
+    if (!pendingShareFile) return;
+
+    try {
+      await sharePdfFileNow(
+        pendingShareFile,
+        pendingShareTitle,
+        pendingShareText
+      );
+
+      setShowNativeShareReady(false);
+      setPendingShareFile(null);
+    } catch (error: any) {
+      if (error?.name === "AbortError") return;
+
+      console.error(error);
+      alert(
+        `No se pudo abrir el compartir con PDF adjunto. Intenta tocar de nuevo el botón.\n\nDetalle: ${error?.name ?? ""}: ${error?.message ?? String(error)}`
+      );
+    }
+  };
+
   const handleShareWhatsApp = async () => {
     try {
       setLoading(true);
       setProgress(1);
       setProgressText("Preparando PDF para compartir...");
 
-      // Si hay una categoría seleccionada, WhatsApp comparte SOLO esa categoría.
-      // Si está en "Todas", comparte todo el catálogo.
+      // Si hay una categoría seleccionada, el PDF compartido por WhatsApp
+      // se genera SOLO con esa categoría. Si no, comparte todo el catálogo.
       const categoryToShare =
         selectedCategory !== "__ALL__" ? selectedCategory : undefined;
 
@@ -1437,55 +1494,64 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         ? `${fileName}-${slug(categoryToShare)}`
         : fileName;
 
-      const { blob, fileName: pdfName } = await generatePdf({
+      const { blob, fileName: fn } = await generatePdf({
         category: categoryToShare,
         overrideFileName: outBase,
         quality,
       });
 
-      const file = new File([blob], pdfName, { type: "application/pdf" });
+      const file = new File([blob], fn, { type: "application/pdf" });
+      const shareTitle = categoryToShare
+        ? `Catálogo - ${categoryToShare}`
+        : "Catálogo";
+      const shareText = categoryToShare
+        ? `Te comparto el catálogo de ${categoryToShare} en PDF`
+        : "Te comparto el catálogo en PDF";
 
-      setSharedFileName(pdfName);
+      setSharedFileName(fn);
+      setPendingShareFile(file);
+      setPendingShareTitle(shareTitle);
+      setPendingShareText(shareText);
+
       setProgress(100);
-      setProgressText("Abriendo compartir...");
+      setProgressText("PDF listo para compartir...");
 
-      // Este es el flujo que antes te funcionaba:
-      // Android abre el selector nativo, eliges WhatsApp, eliges el contacto
-      // y WhatsApp recibe el PDF adjunto.
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: "Catálogo",
-          text: categoryToShare
-            ? `Te comparto el catálogo de ${categoryToShare} en PDF`
-            : "Te comparto el catálogo en PDF",
-          files: [file],
-        });
+      // Primer intento: el flujo que antes te funcionaba.
+      // En Android compatible abre el panel nativo, eliges WhatsApp, eliges contacto
+      // y el PDF llega adjunto.
+      if (isMobile && canSharePdfFile(file)) {
+        try {
+          await sharePdfFileNow(file, shareTitle, shareText);
+          return;
+        } catch (shareErr: any) {
+          if (shareErr?.name === "AbortError") return;
 
-        return;
+          // Este es el error de tu captura:
+          // "Must be handling a user gesture to perform a share request".
+          // Pasa cuando generar el PDF tarda y Chrome pierde el gesto del click.
+          // Solución: mostramos un botón con el PDF ya generado; al tocarlo,
+          // navigator.share se ejecuta inmediatamente y adjunta el PDF.
+          if (isUserGestureError(shareErr)) {
+            setShowNativeShareReady(true);
+            return;
+          }
+
+          console.warn("share() falló, usando fallback:", shareErr);
+          setShowNativeShareReady(true);
+          return;
+        }
       }
 
-      // Fallback para navegadores que NO soportan adjuntar archivos con Web Share.
-      // wa.me / whatsapp:// solo soportan texto, no archivos.
-      const msg = encodeURIComponent(
-        categoryToShare
-          ? `Te comparto el catálogo de ${categoryToShare} en PDF`
-          : "Te comparto el catálogo en PDF"
-      );
-
-      if (isMobile) {
-        window.location.href = `whatsapp://send?text=${msg}`;
-
-        window.setTimeout(() => {
-          window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener,noreferrer");
-        }, 900);
-      } else {
-        window.open(`https://web.whatsapp.com/send?text=${msg}`, "_blank", "noopener,noreferrer");
-      }
+      // Si el navegador no soporta compartir archivos, no hay forma web de adjuntar
+      // el PDF automáticamente a WhatsApp. Dejamos el archivo descargado y mostramos pasos.
+      setProgressText("Descargando PDF...");
+      await downloadBlob(blob, fn);
+      setShowShareInstructions(true);
     } catch (error: any) {
       if (error?.name === "AbortError") return;
       console.error(error);
       alert(
-        `Error compartiendo PDF. Intenta descargarlo directamente.\n\nDetalle: ${error?.name ?? ""}: ${error?.message ?? String(error)}`
+        `Error generando el PDF. Intenta de nuevo.\n\nDetalle: ${error?.name ?? ""}: ${error?.message ?? String(error)}`
       );
     } finally {
       resetProgressLater();
@@ -1517,6 +1583,62 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               <span className="text-xs text-slate-400">No cierres esta ventana</span>
               <span className="text-sm font-semibold text-slate-700">{progress}%</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showNativeShareReady && pendingShareFile && (
+        <div
+          className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 px-4 pb-8"
+          onClick={() => setShowNativeShareReady(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-xl">
+                📎
+              </div>
+              <div>
+                <p className="font-bold text-slate-800 text-base leading-tight">
+                  PDF listo para enviar
+                </p>
+                <p className="text-xs text-slate-400">{sharedFileName}</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-500 mb-4">
+              Toca el botón de abajo. Se abrirá el compartir del celular; selecciona
+              WhatsApp, elige la persona o grupo y el PDF irá adjunto.
+            </p>
+
+            <button
+              onClick={handleSharePreparedPdf}
+              className="w-full h-12 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition mb-2"
+            >
+              Abrir WhatsApp con PDF adjunto
+            </button>
+
+            <button
+              onClick={async () => {
+                if (pendingShareFile) {
+                  await downloadBlob(pendingShareFile, pendingShareFile.name);
+                  setShowNativeShareReady(false);
+                  setShowShareInstructions(true);
+                }
+              }}
+              className="w-full h-10 rounded-xl text-sm text-slate-500 hover:text-slate-700 transition mb-1"
+            >
+              Descargar PDF manualmente
+            </button>
+
+            <button
+              onClick={() => setShowNativeShareReady(false)}
+              className="w-full h-10 rounded-xl text-sm text-slate-400 hover:text-slate-600 transition"
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}
