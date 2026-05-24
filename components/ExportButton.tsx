@@ -1401,13 +1401,48 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     }
   };
 
+  const openWhatsApp = () => {
+    const message = encodeURIComponent(
+      `Hola, te comparto el catálogo PDF${selectedCategory !== "__ALL__" ? ` de la categoría ${selectedCategory}` : ""} 📄`
+    );
+
+    // En móvil intentamos abrir directamente la APP de WhatsApp.
+    // Nota: WhatsApp no permite adjuntar un PDF automáticamente usando whatsapp:// o wa.me;
+    // por eso el PDF se comparte con Web Share API si el navegador lo soporta, o se descarga
+    // y luego se abre WhatsApp para que el usuario lo adjunte como documento.
+    if (isMobile) {
+      window.location.href = `whatsapp://send?text=${message}`;
+
+      // Fallback por si el navegador no abre el esquema whatsapp://
+      window.setTimeout(() => {
+        window.open(`https://wa.me/?text=${message}`, "_blank", "noopener,noreferrer");
+      }, 900);
+      return;
+    }
+
+    window.open(`https://web.whatsapp.com/send?text=${message}`, "_blank", "noopener,noreferrer");
+  };
+
   const handleShareWhatsApp = async () => {
     try {
       setLoading(true);
       setProgress(1);
       setProgressText("Preparando PDF para compartir...");
 
-      const { blob, fileName: fn } = await generatePdf({ quality });
+      // FIX: si hay una categoría seleccionada, el PDF que se comparte por WhatsApp
+      // se genera SOLO con esa categoría. Si no hay categoría seleccionada, comparte todo.
+      const categoryToShare =
+        selectedCategory !== "__ALL__" ? selectedCategory : undefined;
+
+      const outBase = categoryToShare
+        ? `${fileName}-${slug(categoryToShare)}`
+        : fileName;
+
+      const { blob, fileName: fn } = await generatePdf({
+        category: categoryToShare,
+        overrideFileName: outBase,
+        quality,
+      });
 
       setSharedFileName(fn);
       setProgress(100);
@@ -1424,8 +1459,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         if (canShareFile) {
           try {
             await navigator.share({
-              title: "Catálogo PDF",
-              text: "Te comparto el catálogo en PDF 📄",
+              title: categoryToShare
+                ? `Catálogo PDF - ${categoryToShare}`
+                : "Catálogo PDF",
+              text: categoryToShare
+                ? `Te comparto el catálogo PDF de la categoría ${categoryToShare} 📄`
+                : "Te comparto el catálogo en PDF 📄",
               files: [file],
             });
             return;
@@ -1439,6 +1478,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgressText("Descargando PDF...");
       await downloadBlob(blob, fn);
       setShowShareInstructions(true);
+
+      // En móvil abrimos la app de WhatsApp después de dejar listo/descargado el PDF.
+      if (isMobile) {
+        window.setTimeout(() => {
+          openWhatsApp();
+        }, 450);
+      }
     } catch (error) {
       console.error(error);
       alert("Error generando el PDF. Por favor intenta de nuevo.");
@@ -1539,7 +1585,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             <button
               onClick={() => {
                 setShowShareInstructions(false);
-                window.open(isMobile ? "whatsapp://" : "https://web.whatsapp.com", "_blank");
+                openWhatsApp();
               }}
               className="w-full h-12 rounded-xl font-semibold text-white bg-emerald-500 hover:bg-emerald-600 active:scale-[0.99] transition mb-2"
             >
