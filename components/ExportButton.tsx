@@ -1428,8 +1428,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgress(1);
       setProgressText("Preparando PDF para compartir...");
 
-      // FIX: si hay una categoría seleccionada, el PDF que se comparte por WhatsApp
-      // se genera SOLO con esa categoría. Si no hay categoría seleccionada, comparte todo.
+      // Si hay una categoría seleccionada, WhatsApp comparte SOLO esa categoría.
+      // Si está en "Todas", comparte todo el catálogo.
       const categoryToShare =
         selectedCategory !== "__ALL__" ? selectedCategory : undefined;
 
@@ -1437,61 +1437,56 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         ? `${fileName}-${slug(categoryToShare)}`
         : fileName;
 
-      const { blob, fileName: fn } = await generatePdf({
+      const { blob, fileName: pdfName } = await generatePdf({
         category: categoryToShare,
         overrideFileName: outBase,
         quality,
       });
 
-      setSharedFileName(fn);
+      const file = new File([blob], pdfName, { type: "application/pdf" });
+
+      setSharedFileName(pdfName);
       setProgress(100);
-      setProgressText("PDF listo para compartir...");
+      setProgressText("Abriendo compartir...");
 
-      const file = new File([blob], fn, { type: "application/pdf" });
+      // Este es el flujo que antes te funcionaba:
+      // Android abre el selector nativo, eliges WhatsApp, eliges el contacto
+      // y WhatsApp recibe el PDF adjunto.
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: "Catálogo",
+          text: categoryToShare
+            ? `Te comparto el catálogo de ${categoryToShare} en PDF`
+            : "Te comparto el catálogo en PDF",
+          files: [file],
+        });
 
-      const shareData: ShareData = {
-        title: categoryToShare
-          ? `Catálogo PDF - ${categoryToShare}`
-          : "Catálogo PDF",
-        files: [file],
-      };
-
-      const canTryNativeFileShare =
-        typeof navigator.share === "function" &&
-        (
-          typeof navigator.canShare !== "function" ||
-          navigator.canShare({ files: [file] })
-        );
-
-      if (canTryNativeFileShare) {
-        try {
-          setProgressText("Selecciona WhatsApp para enviar el PDF...");
-          // IMPORTANTE:
-          // Para que WhatsApp reciba el PDF adjunto, NO enviamos `text` junto con `files`.
-          // En Android/iOS compatibles se abrirá el panel nativo de compartir; allí eliges WhatsApp,
-          // seleccionas la persona o grupo, y el PDF queda adjunto antes de enviarlo.
-          await navigator.share(shareData);
-          return;
-        } catch (shareErr: any) {
-          // Si el usuario cerró/canceló el panel de compartir, no descargamos ni abrimos WhatsApp.
-          if (shareErr?.name === "AbortError") return;
-          console.warn("No se pudo adjuntar el PDF desde el navegador, usando fallback:", shareErr);
-        }
+        return;
       }
 
-      setProgressText("Descargando PDF...");
-      await downloadBlob(blob, fn);
-      setShowShareInstructions(true);
+      // Fallback para navegadores que NO soportan adjuntar archivos con Web Share.
+      // wa.me / whatsapp:// solo soportan texto, no archivos.
+      const msg = encodeURIComponent(
+        categoryToShare
+          ? `Te comparto el catálogo de ${categoryToShare} en PDF`
+          : "Te comparto el catálogo en PDF"
+      );
 
-      // Fallback seguro:
-      // NO abrimos whatsapp:// ni wa.me automáticamente porque esos enlaces SOLO soportan texto,
-      // no archivos PDF. Abrirlos daría la sensación de que WhatsApp falló porque llegaría
-      // únicamente el mensaje sin el adjunto.
-      // Si el navegador/dispositivo no soporta Web Share con archivos, descargamos el PDF
-      // y mostramos instrucciones para adjuntarlo manualmente.
-    } catch (error) {
+      if (isMobile) {
+        window.location.href = `whatsapp://send?text=${msg}`;
+
+        window.setTimeout(() => {
+          window.open(`https://wa.me/?text=${msg}`, "_blank", "noopener,noreferrer");
+        }, 900);
+      } else {
+        window.open(`https://web.whatsapp.com/send?text=${msg}`, "_blank", "noopener,noreferrer");
+      }
+    } catch (error: any) {
+      if (error?.name === "AbortError") return;
       console.error(error);
-      alert("Error generando el PDF. Por favor intenta de nuevo.");
+      alert(
+        `Error compartiendo PDF. Intenta descargarlo directamente.\n\nDetalle: ${error?.name ?? ""}: ${error?.message ?? String(error)}`
+      );
     } finally {
       resetProgressLater();
     }
