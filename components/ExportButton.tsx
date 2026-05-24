@@ -1307,7 +1307,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         try {
           await navigator.share({
             title: "Catálogo PDF",
-            text: "Te comparto el catálogo en PDF 📄",
             files: [file],
           });
           return;
@@ -1458,13 +1457,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         if (canShareFile) {
           try {
+            // IMPORTANTE ANDROID / WHATSAPP:
+            // No enviamos `text` junto con `files` porque algunas versiones de WhatsApp
+            // abren solo el mensaje de texto y descartan el PDF.
+            // Con `files` únicamente, Android abre el panel nativo y WhatsApp recibe el PDF adjunto.
             await navigator.share({
               title: categoryToShare
                 ? `Catálogo PDF - ${categoryToShare}`
                 : "Catálogo PDF",
-              text: categoryToShare
-                ? `Te comparto el catálogo PDF de la categoría ${categoryToShare} 📄`
-                : "Te comparto el catálogo en PDF 📄",
               files: [file],
             });
             return;
@@ -1479,12 +1479,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       await downloadBlob(blob, fn);
       setShowShareInstructions(true);
 
-      // En móvil abrimos la app de WhatsApp después de dejar listo/descargado el PDF.
-      if (isMobile) {
-        window.setTimeout(() => {
-          openWhatsApp();
-        }, 450);
-      }
+      // No abrimos whatsapp:// automáticamente aquí, porque ese enlace SOLO soporta texto
+      // y por eso parecía que WhatsApp abría sin el PDF adjunto.
+      // Si el navegador no soporta compartir archivos, dejamos el PDF descargado
+      // y mostramos las instrucciones para adjuntarlo manualmente.
     } catch (error) {
       console.error(error);
       alert("Error generando el PDF. Por favor intenta de nuevo.");
