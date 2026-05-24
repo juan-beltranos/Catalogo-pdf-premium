@@ -13,6 +13,8 @@ interface ExportButtonProps {
   products: Product[];
   businessWhatsapp: string;
   pdfProductsPerPage?: number;
+  selectedCategory?: string;
+  onSelectedCategoryChange?: (category: string) => void;
 }
 
 export const ExportButton: React.FC<ExportButtonProps> = ({
@@ -21,9 +23,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   products,
   businessWhatsapp,
   pdfProductsPerPage = 4,
+  selectedCategory: selectedCategoryProp,
+  onSelectedCategoryChange,
 }) => {
   const [loading, setLoading] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
+  const [internalSelectedCategory, setInternalSelectedCategory] =
+    useState<string>("__ALL__");
+
+  const selectedCategory = selectedCategoryProp ?? internalSelectedCategory;
+
+  const setSelectedCategory = (category: string) => {
+    setInternalSelectedCategory(category);
+    onSelectedCategoryChange?.(category);
+  };
   const [quality, setQuality] = useState<"normal" | "alta">("normal");
   const [showShareInstructions, setShowShareInstructions] = useState(false);
   const [sharedFileName, setSharedFileName] = useState("");
@@ -354,6 +366,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       clone.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
         (el as HTMLElement).style.display = "none";
       });
+
+      clone
+        .querySelectorAll('[data-preview-category-hidden="true"]')
+        .forEach((el) => {
+          const htmlEl = el as HTMLElement;
+          htmlEl.classList.remove("hidden");
+          htmlEl.style.removeProperty("display");
+          htmlEl.removeAttribute("data-preview-category-hidden");
+        });
 
       if (opts?.category) {
         updateProgress(9, "Filtrando categoría seleccionada...");
@@ -1405,9 +1426,24 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     try {
       setLoading(true);
       setProgress(1);
-      setProgressText("Preparando PDF para compartir...");
 
-      const { blob, fileName: fn } = await generatePdf({ quality });
+      const hasCategory = selectedCategory !== "__ALL__";
+
+      setProgressText(
+        hasCategory
+          ? "Preparando PDF de la categoría..."
+          : "Preparando PDF para compartir..."
+      );
+
+      const outBase = hasCategory
+        ? `${fileName}-${slug(selectedCategory)}`
+        : fileName;
+
+      const { blob, fileName: fn } = await generatePdf({
+        category: hasCategory ? selectedCategory : undefined,
+        overrideFileName: outBase,
+        quality,
+      });
 
       setSharedFileName(fn);
       setProgress(100);
@@ -1424,8 +1460,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         if (canShareFile) {
           try {
             await navigator.share({
-              title: "Catálogo PDF",
-              text: "Te comparto el catálogo en PDF 📄",
+              title: hasCategory
+                ? `Catálogo PDF - ${selectedCategory}`
+                : "Catálogo PDF",
+              text: hasCategory
+                ? `Te comparto el catálogo de ${selectedCategory} en PDF 📄`
+                : "Te comparto el catálogo en PDF 📄",
               files: [file],
             });
             return;
