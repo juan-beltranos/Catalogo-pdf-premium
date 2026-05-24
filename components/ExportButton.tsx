@@ -62,9 +62,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     updateProgress(3, "Preparando catálogo...");
 
     // Ajuste de tamaño PDF:
-    // Antes estaba en 1200px y se comprimía demasiado al meterlo en A4.
-    // 980px mantiene buena calidad, pero hace imágenes y textos ~20% más visibles.
-    const EXPORT_WIDTH_PX = 980;
+    // Android/desktop conservan el ancho avanzado de 980px.
+    // iOS usa 794px porque es el ancho que ya funciona estable en iPhone
+    // y evita que html2canvas/toDataURL excedan memoria interna de WebKit.
+    const EXPORT_WIDTH_PX = isIOS ? 794 : 980;
     const PDF_MARGIN_MM = 8;
 
     const PDF_PRODUCTS_PER_PAGE = Math.min(12, Math.max(1, Math.round(Number(pdfProductsPerPage) || 4)));
@@ -217,15 +218,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     const resolvedQuality = opts?.quality ?? quality;
 
-    // ── FIX iOS: escala reducida para evitar crash de memoria en Safari ──
+    // ── FIX iOS: escala reducida para evitar crash de memoria en iPhone ──
+    // Chrome iOS también usa WebKit, por eso se trata igual que Safari iOS.
     const canvasScale = isIOS
-      ? 1.0  // iOS: escala baja para no exceder límite de canvas (~16MB)
+      ? 0.8
       : resolvedQuality === "alta" ? 1.6 : 1.25;
 
     const jpegQuality =
       resolvedQuality === "alta"
-        ? isIOS ? 0.72 : 0.86
-        : isIOS ? 0.55 : 0.7;
+        ? isIOS ? 0.62 : 0.86
+        : isIOS ? 0.5 : 0.7;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -565,55 +567,64 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       updateProgress(25, "Cargando imágenes...");
       await Promise.all(imgs.map((img) => waitLoad(img)));
 
-      updateProgress(35, "Convirtiendo imágenes a data URL...");
-
-      // ── FIX iOS CRÍTICO: convertir TODAS las imágenes a data URL antes de html2canvas ──
-      // Safari no puede acceder a imágenes cross-origin en canvas sin este paso
-      const BATCH_SIZE = isIOS ? 4 : 8; // iOS: batches más pequeños para no saturar memoria
-
-      for (let i = 0; i < imgs.length; i += BATCH_SIZE) {
-        const batch = imgs.slice(i, i + BATCH_SIZE);
-
-        const currentProgress =
-          35 + Math.min(25, ((i + batch.length) / Math.max(1, imgs.length)) * 25);
-
-        updateProgress(currentProgress, `Procesando imagen ${i + 1} de ${imgs.length}...`);
+      if (isIOS) {
+        // En iPhone NO convertimos todas las imágenes a data URL.
+        // Esa conversión duplica memoria: blob + base64 + DOM + canvas + JPEG del PDF.
+        // La primera función funciona en iOS precisamente porque evita este paso pesado.
+        updateProgress(35, "Preparando imágenes para iOS...");
 
         await Promise.all(
-          batch.map(async (img) => {
-            const src = img.getAttribute("src") || "";
-
-            if (!src) return;
-
-            // Si ya es data URL, no hacer nada
-            if (src.startsWith("data:")) return;
-
-            try {
-              let blob: Blob;
-
-              if (src.startsWith("blob:")) {
-                const resp = await fetch(src);
-                blob = await resp.blob();
-              } else {
-                blob = await safeFetchBlob(src, 8000);
-              }
-
-              const dataUrl = await blobToDataUrl(blob);
-              img.src = dataUrl;
-              await waitLoad(img, 5000);
-            } catch {
-              // Intentar via canvas como último recurso en iOS
-              if (isIOS && img.complete && img.naturalWidth > 0) {
-                const canvasData = imageToDataUrlViaCanvas(img);
-                if (canvasData) img.src = canvasData;
-              }
-              // Si falla todo, continuar sin bloquear
-            }
+          imgs.map(async (img) => {
+            img.setAttribute("loading", "eager");
+            img.setAttribute("decoding", "sync");
+            await waitLoad(img, 5000);
           })
         );
 
-        // ── FIX iOS: pequeña pausa entre batches para liberar memoria ──
-        if (isIOS) await waitMs(50);
+        await waitMs(150);
+        updateProgress(60, "Imágenes listas para iOS...");
+      } else {
+        updateProgress(35, "Convirtiendo imágenes a data URL...");
+
+        // Android/desktop conservan la ruta avanzada original.
+        const BATCH_SIZE = 8;
+
+        for (let i = 0; i < imgs.length; i += BATCH_SIZE) {
+          const batch = imgs.slice(i, i + BATCH_SIZE);
+
+          const currentProgress =
+            35 + Math.min(25, ((i + batch.length) / Math.max(1, imgs.length)) * 25);
+
+          updateProgress(currentProgress, `Procesando imagen ${i + 1} de ${imgs.length}...`);
+
+          await Promise.all(
+            batch.map(async (img) => {
+              const src = img.getAttribute("src") || "";
+
+              if (!src) return;
+
+              // Si ya es data URL, no hacer nada
+              if (src.startsWith("data:")) return;
+
+              try {
+                let blob: Blob;
+
+                if (src.startsWith("blob:")) {
+                  const resp = await fetch(src);
+                  blob = await resp.blob();
+                } else {
+                  blob = await safeFetchBlob(src, 8000);
+                }
+
+                const dataUrl = await blobToDataUrl(blob);
+                img.src = dataUrl;
+                await waitLoad(img, 5000);
+              } catch {
+                // Si falla, continuar sin bloquear.
+              }
+            })
+          );
+        }
       }
 
       updateProgress(62, "Ajustando diseño del PDF...");
