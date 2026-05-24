@@ -21,8 +21,6 @@ interface CatalogPreviewProps {
   products: Product[];
   previewRef: React.RefObject<HTMLDivElement | null>;
   productsOverride?: Product[];
-  selectedCategory?: string;
-  pdfProductsPerPage?: number;
 }
 
 export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
@@ -30,8 +28,6 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   products,
   previewRef,
   productsOverride,
-  selectedCategory = "__ALL__",
-  pdfProductsPerPage = 4,
 }) => {
   const {
     templateId = 'minimalist',
@@ -60,53 +56,6 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     return arr;
   }, [sourceProducts]);
 
-  const normalizedSelectedCategory = (selectedCategory || "__ALL__").trim();
-
-  const isFilteringByCategory =
-    normalizedSelectedCategory !== "__ALL__";
-
-  const visibleProductsCount = useMemo(() => {
-    if (!isFilteringByCategory) return orderedProducts.length;
-
-    return orderedProducts.filter((product) => {
-      const productCategory = (product.category || "Sin categoría").trim();
-      return (
-        productCategory.toLowerCase() ===
-        normalizedSelectedCategory.toLowerCase()
-      );
-    }).length;
-  }, [orderedProducts, isFilteringByCategory, normalizedSelectedCategory]);
-
-  const selectedPdfLayout = Math.min(
-    6,
-    Math.max(1, Math.round(Number(pdfProductsPerPage) || 4))
-  );
-
-  const previewGridClass =
-    selectedPdfLayout === 1
-      ? 'grid-cols-1'
-      : 'grid-cols-2';
-
-  const previewGapClass =
-    selectedPdfLayout === 1
-      ? isMinimalist
-        ? 'gap-y-8'
-        : 'gap-y-6'
-      : selectedPdfLayout === 2
-        ? isMinimalist
-          ? 'gap-x-7 gap-y-8'
-          : 'gap-x-5 gap-y-6'
-        : selectedPdfLayout === 4
-          ? isMinimalist
-            ? 'gap-x-7 gap-y-8'
-            : 'gap-x-5 gap-y-6'
-          : 'gap-x-4 gap-y-5';
-
-  const previewProductDensityClass =
-    selectedPdfLayout === 1
-      ? 'max-w-[560px] mx-auto w-full'
-      : '';
-
   const wa = useMemo(
     () => normalizeWaNumber(storeInfo.whatsapp || '', '57'),
     [storeInfo.whatsapp]
@@ -133,7 +82,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
       <div
         ref={previewRef}
         id="catalog-capture-area"
-        className={`bg-white w-full w-[800px] min-w-[800px] overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
+        className={`bg-white w-full w-[800px] min-w-[800px]overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
           }`}
         style={{
           minHeight: '1120px',
@@ -144,43 +93,6 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   .product-pdf {
     break-inside: avoid;
     page-break-inside: avoid;
-  }
-
-  .products-grid[data-pdf-products-per-page="1"] {
-    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
-  }
-
-  .products-grid[data-pdf-products-per-page="2"],
-  .products-grid[data-pdf-products-per-page="3"],
-  .products-grid[data-pdf-products-per-page="4"],
-  .products-grid[data-pdf-products-per-page="5"],
-  .products-grid[data-pdf-products-per-page="6"] {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .products-grid[data-pdf-products-per-page="6"],
-  .products-grid[data-pdf-products-per-page="5"] {
-    gap: 16px !important;
-  }
-
-  .products-grid[data-pdf-products-per-page="6"] .product-pdf,
-  .products-grid[data-pdf-products-per-page="5"] .product-pdf {
-    padding: 14px !important;
-  }
-
-  .products-grid[data-pdf-products-per-page="1"] .product-media,
-  .products-grid[data-pdf-products-per-page="1"] [class*="media"] {
-    min-height: 360px;
-  }
-
-  .products-grid[data-pdf-products-per-page="2"] .product-media,
-  .products-grid[data-pdf-products-per-page="2"] [class*="media"] {
-    min-height: 260px;
-  }
-
-  .products-grid[data-pdf-products-per-page="6"] .product-media,
-  .products-grid[data-pdf-products-per-page="6"] [class*="media"] {
-    max-height: 170px;
   }
 
   @media print {
@@ -255,18 +167,6 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     row-gap: 24px !important;
   }
 
-  .pdf-mode .products-grid[data-pdf-products-per-page="1"] {
-    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
-  }
-
-  .pdf-mode .products-grid[data-pdf-products-per-page="2"],
-  .pdf-mode .products-grid[data-pdf-products-per-page="3"],
-  .pdf-mode .products-grid[data-pdf-products-per-page="4"],
-  .pdf-mode .products-grid[data-pdf-products-per-page="5"],
-  .pdf-mode .products-grid[data-pdf-products-per-page="6"] {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
   .pdf-mode .product-pdf {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
@@ -327,7 +227,6 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
           {hasHeaderImage && (
             <div className="absolute inset-0 bg-black/35 z-0" />
           )}
-
           <div
             className={`flex flex-col md:flex-row justify-between items-center gap-6 relative z-10 ${isClassic ? 'text-center md:text-left' : ''
               }`}
@@ -336,10 +235,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {storeInfo.logo && (
                 <div
                   className={`${isModern
-                      ? 'w-24 h-24 rounded-2xl'
-                      : isMinimalist
-                        ? 'w-16 h-16 rounded-none border border-slate-200'
-                        : 'w-20 h-20 rounded-xl border border-white/30'
+                    ? 'w-24 h-24 rounded-2xl'
+                    : isMinimalist
+                      ? 'w-16 h-16 rounded-none border border-slate-200'
+                      : 'w-20 h-20 rounded-xl border border-white/30'
                     } bg-white p-2 border border-slate-200 flex items-center justify-center`}
                 >
                   <img
@@ -349,17 +248,16 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   />
                 </div>
               )}
-
               <div
                 className={`flex flex-col md:flex-row justify-between items-center gap-4 md:gap-6 relative z-10 ${isClassic ? 'text-center md:text-left' : ''
                   }`}
               >
                 <h1
                   className={`font-extrabold uppercase tracking-tight ${isMinimalist
-                      ? hasHeaderImage
-                        ? 'text-xl md:text-2xl text-white'
-                        : 'text-xl md:text-2xl text-slate-900'
-                      : 'text-2xl md:text-4xl'
+                    ? hasHeaderImage
+                      ? 'text-xl md:text-2xl text-white'
+                      : 'text-xl md:text-2xl text-slate-900'
+                    : 'text-2xl md:text-4xl'
                     } ${isClassic ? 'font-serif tracking-[0.12em]' : ''}`}
                 >
                   {storeInfo.name || 'Mi Catálogo'}
@@ -371,10 +269,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
                 <div
                   className={`flex items-center gap-3 ${isMinimalist
-                      ? hasHeaderImage
-                        ? 'text-white'
-                        : 'text-slate-600'
-                      : 'text-white'
+                    ? hasHeaderImage
+                      ? 'text-white'
+                      : 'text-slate-600'
+                    : 'text-white'
                     }`}
                 >
                   {storeInfo.whatsapp && (
@@ -386,10 +284,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       title="WhatsApp"
                       data-pdf-link="social"
                       className={`p-2 rounded-full transition-colors ${isMinimalist
-                          ? hasHeaderImage
-                            ? 'hover:bg-white/20'
-                            : 'hover:bg-slate-100'
-                          : 'hover:bg-white/15'
+                        ? hasHeaderImage
+                          ? 'hover:bg-white/20'
+                          : 'hover:bg-slate-100'
+                        : 'hover:bg-white/15'
                         }`}
                     >
                       <MessageCircle className="w-5 h-5" />
@@ -405,10 +303,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       aria-label="Facebook"
                       title={facebookLabel(storeInfo.facebook)}
                       className={`p-2 rounded-full transition-colors ${isMinimalist
-                          ? hasHeaderImage
-                            ? 'hover:bg-white/20'
-                            : 'hover:bg-slate-100'
-                          : 'hover:bg-white/15'
+                        ? hasHeaderImage
+                          ? 'hover:bg-white/20'
+                          : 'hover:bg-slate-100'
+                        : 'hover:bg-white/15'
                         }`}
                     >
                       <Facebook className="w-5 h-5" />
@@ -424,10 +322,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       aria-label="Instagram"
                       title={instagramLabel(storeInfo.instagram)}
                       className={`p-2 rounded-full transition-colors ${isMinimalist
-                          ? hasHeaderImage
-                            ? 'hover:bg-white/20'
-                            : 'hover:bg-slate-100'
-                          : 'hover:bg-white/15'
+                        ? hasHeaderImage
+                          ? 'hover:bg-white/20'
+                          : 'hover:bg-slate-100'
+                        : 'hover:bg-white/15'
                         }`}
                     >
                       <Instagram className="w-5 h-5" />
@@ -439,10 +337,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               {storeInfo.whatsapp && (
                 <div
                   className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold ${isMinimalist
-                      ? hasHeaderImage
-                        ? 'bg-white/90 text-slate-900 border border-white/40'
-                        : 'bg-slate-100 text-slate-900 border border-slate-200'
-                      : 'bg-white text-slate-900 border border-white/40'
+                    ? hasHeaderImage
+                      ? 'bg-white/90 text-slate-900 border border-white/40'
+                      : 'bg-slate-100 text-slate-900 border border-slate-200'
+                    : 'bg-white text-slate-900 border border-white/40'
                     }`}
                 >
                   <Phone className="w-4 h-4" />
@@ -450,6 +348,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                 </div>
               )}
             </div>
+
           </div>
 
           {hasHeaderImage && (
@@ -460,10 +359,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
         {storeInfo.whatsapp && (
           <div
             className={`px-4 md:px-10 py-2 border-b ${isMinimalist
-                ? 'bg-white border-slate-100 text-slate-500'
-                : isClassic
-                  ? 'bg-stone-50 border-stone-100 text-stone-600'
-                  : 'bg-slate-50 border-slate-100 text-slate-600'
+              ? 'bg-white border-slate-100 text-slate-500'
+              : isClassic
+                ? 'bg-stone-50 border-stone-100 text-stone-600'
+                : 'bg-slate-50 border-slate-100 text-slate-600'
               }`}
           >
             <div className="flex items-center justify-center gap-2 text-xs">
@@ -475,16 +374,11 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
         <div className="px-4 py-6 md:p-10 md:pt-4 flex-grow">
           <div
-            className={`products-grid grid ${previewGridClass} ${previewGapClass}`}
-            data-pdf-products-per-page={selectedPdfLayout}
+            className={`products-grid grid grid-cols-1 md:grid-cols-2 ${isMinimalist ? 'gap-x-7 gap-y-8' : 'gap-x-5 gap-y-6'
+              }`}
           >
             {orderedProducts.map((product) => {
               const waLink = storeInfo.whatsapp ? buildWaLink(product) : '#';
-              const productCategory = (product.category || "Sin categoría").trim();
-
-              const hideByCategory =
-                isFilteringByCategory &&
-                productCategory.toLowerCase() !== normalizedSelectedCategory.toLowerCase();
 
               return (
                 <a
@@ -492,17 +386,15 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   href={waLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`${theme.card} product-pdf ${previewProductDensityClass} ${hideByCategory ? "hidden" : ""
-                    }`}
+                  className={`${theme.card} product-pdf`}
                   style={{ textDecoration: 'none' }}
-                  data-category={productCategory}
-                  data-preview-category-hidden={hideByCategory ? "true" : undefined}
+                  data-category={(product.category || 'Sin categoría').trim()}
                   data-pdf-link="product"
                   data-product-name={product.name}
                   data-product-price={String(product.price ?? '')}
                   title="Haz clic para pedir por WhatsApp"
                 >
-                  <div className={`${theme.mediaWrap} product-media`}>
+                  <div className={theme.mediaWrap}>
                     <div className={theme.mediaInner}>
                       {product.featured && (
                         <div
@@ -526,14 +418,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       )}
 
                       {product.category && (
-                        <div
-                          data-category-badge="true"
-                          className={theme.categoryBadge}
-                          style={inlineTheme.categoryBadgeStyle}
-                        >
-                          <span style={{ display: 'block', lineHeight: 1, paddingTop: '1px' }}>
-                            {product.category}
-                          </span>
+                        <div data-category-badge="true" className={theme.categoryBadge} style={inlineTheme.categoryBadgeStyle}>
+                          <span style={{ display: 'block', lineHeight: 1, paddingTop: '1px' }}>{product.category}</span>
                         </div>
                       )}
 
@@ -547,12 +433,14 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                           <span className="text-4xl font-bold">Sin Foto</span>
                         </div>
                       )}
+
                     </div>
                   </div>
 
                   <div className={theme.body}>
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="flex flex-col items-start">
+
                         {(product as any).originalPrice &&
                           (product as any).originalPrice > product.price && (
                             <div className="mb-3 leading-none">
@@ -569,6 +457,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                         >
                           <span>{formatCurrency(product.price)}</span>
                         </div>
+
                       </div>
 
                       {showQuantityInPdf && (product.quantity ?? 0) > 0 && (
@@ -590,11 +479,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
                     {storeInfo.whatsapp && (
                       <div className={theme.actionHintWrap}>
-                        <div
-                          className={theme.actionHint}
-                          style={inlineTheme.actionStyle}
-                          data-action-hint="true"
-                        >
+                        <div className={theme.actionHint} style={inlineTheme.actionStyle} data-action-hint="true">
                           <span className="inline-flex items-center gap-2">
                             <MessageCircle className="w-3 h-3 text-green-600" />
                             {isMinimalist
@@ -619,12 +504,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             })}
           </div>
 
-          {visibleProductsCount === 0 && (
+          {orderedProducts.length === 0 && (
             <div className="py-32 text-center text-slate-300">
               <p className="text-xl font-light italic">
-                {isFilteringByCategory
-                  ? "No hay productos en esta categoría."
-                  : "Tu catálogo cobra vida aquí. Agrega productos para comenzar."}
+                Tu catálogo cobra vida aquí. Agrega productos para comenzar.
               </p>
             </div>
           )}

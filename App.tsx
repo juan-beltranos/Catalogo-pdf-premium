@@ -25,7 +25,7 @@ export const App: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<ViewMode>('editor');
   const previewRef = useRef<HTMLDivElement>(null);
-  const [selectedCategory, setSelectedCategory] = useState("__ALL__");
+
   const handleTemplateSelect = (id: TemplateId) => {
     updateStoreInfo({ templateId: id });
   };
@@ -150,13 +150,11 @@ export const App: React.FC = () => {
               </div>
 
               <div className="w-full flex justify-center">
-                  <CatalogPreview
-                    storeInfo={storeInfo}
-                    products={products}
-                    previewRef={previewRef}
-                    selectedCategory={selectedCategory}
-                    pdfProductsPerPage={storeInfo.pdfProductsPerPage}
-                  />
+                <CatalogPreview
+                  storeInfo={storeInfo}
+                  products={products}
+                  previewRef={previewRef}
+                />
               </div>
             </motion.div>
           )}
@@ -194,12 +192,10 @@ export const App: React.FC = () => {
       {viewMode === 'preview' && (
         <ExportButton
           targetRef={previewRef}
-          fileName={storeInfo.name || "catalogo"}
+          fileName={storeInfo.name || 'mi-catalogo'}
           products={products}
-          businessWhatsapp={storeInfo.whatsapp}
-          pdfProductsPerPage={storeInfo.pdfProductsPerPage}
-          selectedCategory={selectedCategory}
-          onSelectedCategoryChange={setSelectedCategory}
+          businessWhatsapp={storeInfo.whatsapp || ''}
+          pdfProductsPerPage={(storeInfo as any).pdfProductsPerPage ?? 4}
         />
       )}
     </div>
