@@ -221,7 +221,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     // ── FIX iOS: escala reducida para evitar crash de memoria en iPhone ──
     // Chrome iOS también usa WebKit, por eso se trata igual que Safari iOS.
     const canvasScale = isIOS
-      ? 0.8
+      ? 0.65
       : resolvedQuality === "alta" ? 1.6 : 1.25;
 
     const jpegQuality =
@@ -1055,8 +1055,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const makePage = (includeHeader: boolean) => {
         const page = clone.cloneNode(true) as HTMLElement;
 
-        page.style.position = "absolute";
-        page.style.left = "-99999px";
+        // iOS/WebKit puede quedarse colgado si html2canvas captura un nodo enorme
+        // ubicado muy lejos de la pantalla con left:-99999px. Android/desktop
+        // conservan el comportamiento original; iPhone queda pegado al viewport
+        // pero detrás de la app para que WebKit sí lo pinte.
+        page.style.position = isIOS ? "fixed" : "absolute";
+        page.style.left = isIOS ? "0" : "-99999px";
         page.style.top = "0";
         page.style.width = `${EXPORT_WIDTH_PX}px`;
         page.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
@@ -1067,8 +1071,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         page.style.visibility = "visible";
         page.style.opacity = "1";
         page.style.overflow = "visible";
-        page.style.zIndex = "-9999";
+        page.style.zIndex = isIOS ? "-1" : "-9999";
         page.style.pointerEvents = "none";
+        page.style.contain = isIOS ? "layout style paint" : "";
+        page.style.webkitTransform = isIOS ? "translateZ(0)" : "";
 
         page.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
           (el as HTMLElement).style.display = "none";
