@@ -1447,31 +1447,35 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgress(100);
       setProgressText("PDF listo para compartir...");
 
-      if (isMobile) {
-        const file = new File([blob], fn, { type: "application/pdf" });
+      const file = new File([blob], fn, { type: "application/pdf" });
 
-        const canShareFile =
-          typeof navigator.share === "function" &&
-          typeof navigator.canShare === "function" &&
-          navigator.canShare({ files: [file] });
+      const shareData: ShareData = {
+        title: categoryToShare
+          ? `Catálogo PDF - ${categoryToShare}`
+          : "Catálogo PDF",
+        files: [file],
+      };
 
-        if (canShareFile) {
-          try {
-            // IMPORTANTE ANDROID / WHATSAPP:
-            // No enviamos `text` junto con `files` porque algunas versiones de WhatsApp
-            // abren solo el mensaje de texto y descartan el PDF.
-            // Con `files` únicamente, Android abre el panel nativo y WhatsApp recibe el PDF adjunto.
-            await navigator.share({
-              title: categoryToShare
-                ? `Catálogo PDF - ${categoryToShare}`
-                : "Catálogo PDF",
-              files: [file],
-            });
-            return;
-          } catch (shareErr: any) {
-            if (shareErr?.name === "AbortError") return;
-            console.warn("share() falló, usando fallback:", shareErr);
-          }
+      const canTryNativeFileShare =
+        typeof navigator.share === "function" &&
+        (
+          typeof navigator.canShare !== "function" ||
+          navigator.canShare({ files: [file] })
+        );
+
+      if (canTryNativeFileShare) {
+        try {
+          setProgressText("Selecciona WhatsApp para enviar el PDF...");
+          // IMPORTANTE:
+          // Para que WhatsApp reciba el PDF adjunto, NO enviamos `text` junto con `files`.
+          // En Android/iOS compatibles se abrirá el panel nativo de compartir; allí eliges WhatsApp,
+          // seleccionas la persona o grupo, y el PDF queda adjunto antes de enviarlo.
+          await navigator.share(shareData);
+          return;
+        } catch (shareErr: any) {
+          // Si el usuario cerró/canceló el panel de compartir, no descargamos ni abrimos WhatsApp.
+          if (shareErr?.name === "AbortError") return;
+          console.warn("No se pudo adjuntar el PDF desde el navegador, usando fallback:", shareErr);
         }
       }
 
@@ -1479,10 +1483,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       await downloadBlob(blob, fn);
       setShowShareInstructions(true);
 
-      // No abrimos whatsapp:// automáticamente aquí, porque ese enlace SOLO soporta texto
-      // y por eso parecía que WhatsApp abría sin el PDF adjunto.
-      // Si el navegador no soporta compartir archivos, dejamos el PDF descargado
-      // y mostramos las instrucciones para adjuntarlo manualmente.
+      // Fallback seguro:
+      // NO abrimos whatsapp:// ni wa.me automáticamente porque esos enlaces SOLO soportan texto,
+      // no archivos PDF. Abrirlos daría la sensación de que WhatsApp falló porque llegaría
+      // únicamente el mensaje sin el adjunto.
+      // Si el navegador/dispositivo no soporta Web Share con archivos, descargamos el PDF
+      // y mostramos instrucciones para adjuntarlo manualmente.
     } catch (error) {
       console.error(error);
       alert("Error generando el PDF. Por favor intenta de nuevo.");
