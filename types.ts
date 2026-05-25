@@ -12,6 +12,7 @@ export interface Product {
   hidden?: boolean;
   quantity?: number;
   originalPrice?: number;
+  sku?: string;
 }
 
 export type TemplateId = 'minimalist' | 'classic' | 'modern';

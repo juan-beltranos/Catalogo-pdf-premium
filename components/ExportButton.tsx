@@ -28,9 +28,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   const [showShareInstructions, setShowShareInstructions] = useState(false);
   const [sharedFileName, setSharedFileName] = useState("");
 
-  // Cuando Android/Chrome demora generando el PDF, puede perderse el gesto del usuario
-  // y navigator.share lanza NotAllowedError. Guardamos el archivo listo para compartir
-  // y mostramos un segundo botón; ese toque sí cuenta como gesto directo del usuario.
+
   const [showNativeShareReady, setShowNativeShareReady] = useState(false);
   const [pendingShareFile, setPendingShareFile] = useState<File | null>(null);
   const [pendingShareTitle, setPendingShareTitle] = useState("Catálogo");
@@ -806,6 +804,64 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const usableWmm = pageW - PDF_MARGIN_MM * 2;
       const usableHmm = pageH - PDF_MARGIN_MM * 2;
 
+      const getWatermarkLogoSrc = (): string => {
+        const logoImg =
+          (clone.querySelector('img[data-store-logo="true"]') as HTMLImageElement | null) ||
+          (clone.querySelector('[data-logo="true"] img') as HTMLImageElement | null) ||
+          (clone.querySelector('.store-logo img, .logo img, .brand-logo img') as HTMLImageElement | null);
+
+        if (!logoImg) return "";
+
+        // Después de convertir las imágenes del catálogo, normalmente el logo ya queda en data URL.
+        // Si se puede, lo pasamos por canvas para que jsPDF lo reciba como JPEG confiable.
+        return imageToDataUrlViaCanvas(logoImg) || logoImg.src || logoImg.getAttribute("src") || "";
+      };
+
+      const watermarkLogoSrc = getWatermarkLogoSrc();
+
+      const getImageFormatForPdf = (src: string): "PNG" | "JPEG" | "WEBP" => {
+        const value = src.toLowerCase();
+
+        if (value.startsWith("data:image/png") || value.endsWith(".png")) return "PNG";
+        if (value.startsWith("data:image/webp") || value.endsWith(".webp")) return "WEBP";
+
+        return "JPEG";
+      };
+
+      const addPdfWatermark = () => {
+        if (!watermarkLogoSrc) return;
+
+        try {
+          const watermarkWidth = usableWmm * 0.62;
+          const watermarkHeight = watermarkWidth;
+          const x = (pageW - watermarkWidth) / 2;
+          const y = (pageH - watermarkHeight) / 2;
+          const pdfAny = pdf as any;
+
+          if (pdfAny.setGState && pdfAny.GState) {
+            pdfAny.setGState(new pdfAny.GState({ opacity: 0.075 }));
+          }
+
+          pdf.addImage(
+            watermarkLogoSrc,
+            getImageFormatForPdf(watermarkLogoSrc),
+            x,
+            y,
+            watermarkWidth,
+            watermarkHeight,
+            undefined,
+            "FAST",
+            -14
+          );
+
+          if (pdfAny.setGState && pdfAny.GState) {
+            pdfAny.setGState(new pdfAny.GState({ opacity: 1 }));
+          }
+        } catch (err) {
+          console.warn("No se pudo agregar la marca de agua al PDF:", err);
+        }
+      };
+
       const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
       const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 6;
 
@@ -1140,15 +1196,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           Array.from(page.querySelectorAll('[data-pdf-link="product"]')) as HTMLElement[]
         ).forEach((el) => {
           const name = (el.dataset.productName || "").trim();
+          const sku = (el.dataset.productSku || "").trim();
           const price = (el.dataset.productPrice || "").trim();
+
           if (!name) return;
+
+          const productTitle = sku ? `${name} - ${sku}` : name;
 
           let url = (el as HTMLAnchorElement).getAttribute?.("href") || "";
 
           if (businessWa) {
-            const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${name}\n• Precio: ${formatCurrency(
+            const msg = `Hola 👋, quiero hacer un pedido:\n• Producto: ${productTitle}\n• Precio: ${formatCurrency(
               Number(price || 0)
             )}`;
+
             url = `https://api.whatsapp.com/send?phone=${businessWa}&text=${encodeWaText(msg)}`;
           }
 
@@ -1248,7 +1309,18 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             ? PDF_MARGIN_MM
             : PDF_MARGIN_MM + Math.max(0, (usableHmm - pageHmm) / 2);
 
-        pdf.addImage(imgData, "JPEG", PDF_MARGIN_MM, pageYmm, usableWmm, pageHmm, undefined, "FAST");
+        pdf.addImage(
+          imgData,
+          "JPEG",
+          PDF_MARGIN_MM,
+          pageYmm,
+          usableWmm,
+          pageHmm,
+          undefined,
+          "FAST"
+        );
+
+        addPdfWatermark();
 
         const pageLinkAreas = collectPageLinks(page);
         for (const la of pageLinkAreas) {
@@ -1475,8 +1547,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgress(1);
       setProgressText("Preparando PDF para compartir...");
 
-      // Si hay una categoría seleccionada, el PDF compartido por WhatsApp
-      // se genera SOLO con esa categoría. Si no, comparte todo el catálogo.
       const categoryToShare =
         selectedCategory !== "__ALL__" ? selectedCategory : undefined;
 
@@ -1506,9 +1576,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       setProgress(100);
       setProgressText("PDF listo para compartir...");
 
-      // Primer intento: el flujo que antes te funcionaba.
-      // En Android compatible abre el panel nativo, eliges WhatsApp, eliges contacto
-      // y el PDF llega adjunto.
+
       if (isMobile && canSharePdfFile(file)) {
         try {
           await sharePdfFileNow(file, shareTitle, shareText);
@@ -1516,24 +1584,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         } catch (shareErr: any) {
           if (shareErr?.name === "AbortError") return;
 
-          // Este es el error de tu captura:
-          // "Must be handling a user gesture to perform a share request".
-          // Pasa cuando generar el PDF tarda y Chrome pierde el gesto del click.
-          // Solución: mostramos un botón con el PDF ya generado; al tocarlo,
-          // navigator.share se ejecuta inmediatamente y adjunta el PDF.
           if (isUserGestureError(shareErr)) {
             setShowNativeShareReady(true);
             return;
           }
-
           console.warn("share() falló, usando fallback:", shareErr);
           setShowNativeShareReady(true);
           return;
         }
       }
 
-      // Si el navegador no soporta compartir archivos, no hay forma web de adjuntar
-      // el PDF automáticamente a WhatsApp. Dejamos el archivo descargado y mostramos pasos.
       setProgressText("Descargando PDF...");
       await downloadBlob(blob, fn);
       setShowShareInstructions(true);

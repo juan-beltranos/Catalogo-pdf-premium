@@ -244,6 +244,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   <img
                     src={storeInfo.logo}
                     alt="Logo"
+                    data-store-logo="true"
                     className="max-w-full max-h-full object-contain"
                   />
                 </div>
@@ -392,6 +393,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                   data-pdf-link="product"
                   data-product-name={product.name}
                   data-product-price={String(product.price ?? '')}
+                  data-product-sku={(product as any).sku || ""}
                   title="Haz clic para pedir por WhatsApp"
                 >
                   <div className={theme.mediaWrap}>
