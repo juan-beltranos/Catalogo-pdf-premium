@@ -91,41 +91,100 @@ function SortableCard({
 
 type ExcelRow = Record<string, any>;
 
-/** Normaliza un nombre de columna: minúsculas, sin tildes, sin espacios extra */
+/**
+ * Normaliza un nombre de columna para que Excel acepte headers como:
+ * originalPrice, original_price, Precio Anterior, precio-anterior, etc.
+ */
 const normalizeKey = (key: string) =>
   key
     .toString()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase()
     .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "_");
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
 /**
  * Intenta encontrar un valor en una fila buscando por múltiples alias de columna.
  * Por ejemplo: "nombre" | "name" | "producto" | "title"
  */
 const getField = (row: ExcelRow, ...aliases: string[]): any => {
-  for (const alias of aliases) {
+  const normalizedAliases = aliases.map(normalizeKey);
+
+  for (const alias of normalizedAliases) {
     const key = Object.keys(row).find((k) => normalizeKey(k) === alias);
     if (
       key !== undefined &&
       row[key] !== undefined &&
       row[key] !== null &&
       row[key] !== ""
-    )
+    ) {
       return row[key];
+    }
   }
+
   return undefined;
 };
 
 const toStr = (v: any): string =>
   v === undefined || v === null ? "" : String(v).trim();
 
+const isBlank = (v: any) =>
+  v === undefined || v === null || String(v).trim() === "";
+
+/**
+ * Convierte precios/cantidades desde Excel sin romper formatos comunes:
+ * 20000, $20.000, 20,000, 20.000,50, 20000.50
+ */
 const toNum = (v: any): number => {
-  if (typeof v === "number") return v;
-  const n = Number(String(v ?? "").replace(/[^\d.]/g, ""));
-  return isFinite(n) ? n : 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+  let value = String(v ?? "")
+    .trim()
+    .replace(/[^\d.,-]/g, "");
+
+  if (!value) return 0;
+
+  const lastDot = value.lastIndexOf(".");
+  const lastComma = value.lastIndexOf(",");
+
+  if (lastDot !== -1 && lastComma !== -1) {
+    // El último separador suele ser decimal; el otro es miles.
+    if (lastComma > lastDot) {
+      value = value.replace(/\./g, "").replace(",", ".");
+    } else {
+      value = value.replace(/,/g, "");
+    }
+  } else if (lastComma !== -1) {
+    const decimals = value.length - lastComma - 1;
+    value = decimals === 3 ? value.replace(/,/g, "") : value.replace(",", ".");
+  } else if (lastDot !== -1) {
+    const decimals = value.length - lastDot - 1;
+    value = decimals === 3 ? value.replace(/\./g, "") : value;
+  }
+
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const toOptionalNum = (v: any): number | undefined => {
+  if (isBlank(v)) return undefined;
+  const n = toNum(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+const toBool = (v: any, defaultValue = false): boolean => {
+  if (v === undefined || v === null || v === "") return defaultValue;
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v === 1;
+
+  const value = toStr(v).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (["1", "true", "si", "s", "yes", "y", "activo", "active", "visible"].includes(value)) return true;
+  if (["0", "false", "no", "n", "inactivo", "inactive", "oculto", "hidden"].includes(value)) return false;
+
+  return defaultValue;
 };
 
 const normalizeHtml = (s: any): string => {
@@ -175,7 +234,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   // ── Estado para el modal de preview de Excel ──
   const [excelPreview, setExcelPreview] = useState<{
     rows: ExcelRow[];
-    mapped: Partial<Product>[];
+    mapped: Product[];
     fileName: string;
   } | null>(null);
   const [importingExcel, setImportingExcel] = useState(false);
@@ -441,23 +500,43 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
   /**
    * Convierte una fila del Excel (objeto con claves = nombre columna)
-   * en un Partial<Product> usando alias flexibles para cada campo.
+   * en un Product usando alias flexibles para cada campo.
+   *
+   * Campos soportados del producto:
+   *   id, name, price, originalPrice, description, image, imageId,
+   *   category, quantity, order, featured, hidden.
    *
    * Columnas soportadas (se detectan sin importar mayúsculas/tildes):
-   *   nombre | name | producto | title
-   *   precio | price | valor | costo | cost
-   *   precio_anterior | precio_viejo | old_price | original_price | compare_at_price
-   *   descripcion | description | detalle | detail
-   *   categoria | category | tipo | type | grupo | group
-   *   cantidad | quantity | stock | inventario | inventory
-   *   destacado | featured | star
-   *   oculto | hidden
+   *   id | product_id | codigo | code | sku | referencia | ref
+   *   nombre | name | producto | title | articulo | item
+   *   precio | price | valor | costo | cost | precio_actual
+   *   precio_anterior | originalPrice | original_price | oldPrice | old_price | compareAtPrice | compare_at_price
+   *   descripcion | description | detalle | detail | info
+   *   imagen | image | foto | photo | url_imagen | imageUrl | image_url | url | picture | thumbnail
+   *   imageId | image_id | id_imagen | imagen_id | cloudinary_id | public_id
+   *   categoria | category | tipo | type | grupo | group | seccion | section
+   *   cantidad | quantity | stock | inventario | inventory | existencias
+   *   orden | order | posicion | position | sort_order
+   *   destacado | featured | star | especial
+   *   oculto | hidden | inactivo | inactive
    */
-  const mapExcelRow = (row: ExcelRow, index: number): Partial<Product> | null => {
+  const mapExcelRow = (row: ExcelRow, index: number): Product | null => {
     const name = toStr(
       getField(row, "nombre", "name", "producto", "title", "articulo", "item")
     );
     if (!name) return null;
+
+    const idRaw = getField(
+      row,
+      "id",
+      "product_id",
+      "producto_id",
+      "codigo",
+      "code",
+      "sku",
+      "referencia",
+      "ref"
+    );
 
     const price = toNum(
       getField(row, "precio", "price", "valor", "costo", "cost", "precio_actual")
@@ -468,20 +547,19 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       "precio_anterior",
       "precio_viejo",
       "old_price",
+      "oldPrice",
       "original_price",
+      "originalPrice",
       "compare_at_price",
+      "compareAtPrice",
       "precio_original",
       "precio_tachado",
       "precio_base"
     );
 
-    const originalPriceNum =
-      rawOriginal !== undefined ? toNum(rawOriginal) : undefined;
-
+    const originalPriceNum = toOptionalNum(rawOriginal);
     const originalPrice =
-      typeof originalPriceNum === "number" &&
-        originalPriceNum > 0 &&
-        originalPriceNum > price
+      typeof originalPriceNum === "number" && originalPriceNum > 0
         ? originalPriceNum
         : undefined;
 
@@ -514,25 +592,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     );
 
     const quantity =
-      quantityRaw !== undefined
-        ? Math.max(0, parseInt(String(quantityRaw), 10) || 0)
-        : 0;
+      quantityRaw !== undefined ? Math.max(0, Math.trunc(toNum(quantityRaw))) : 0;
 
-    const featuredRaw = getField(row, "destacado", "featured", "star", "especial");
-    const featured =
-      featuredRaw === true ||
-      featuredRaw === 1 ||
-      toStr(featuredRaw).toLowerCase() === "si" ||
-      toStr(featuredRaw).toLowerCase() === "sí" ||
-      toStr(featuredRaw).toLowerCase() === "true";
-
-    const hiddenRaw = getField(row, "oculto", "hidden", "inactivo", "inactive");
-    const hidden =
-      hiddenRaw === true ||
-      hiddenRaw === 1 ||
-      toStr(hiddenRaw).toLowerCase() === "si" ||
-      toStr(hiddenRaw).toLowerCase() === "sí" ||
-      toStr(hiddenRaw).toLowerCase() === "true";
     const image = toStr(
       getField(
         row,
@@ -542,14 +603,45 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         "photo",
         "url_imagen",
         "image_url",
+        "imageUrl",
         "url",
         "picture",
         "thumbnail"
       )
     );
 
+    const imageId = toStr(
+      getField(
+        row,
+        "image_id",
+        "imageId",
+        "id_imagen",
+        "imagen_id",
+        "cloudinary_id",
+        "public_id"
+      )
+    );
+
+    const orderRaw = getField(
+      row,
+      "orden",
+      "order",
+      "posicion",
+      "position",
+      "sort_order"
+    );
+
+    const orderNum = toOptionalNum(orderRaw);
+
+    const featuredRaw = getField(row, "destacado", "featured", "star", "especial");
+    const hiddenRaw = getField(row, "oculto", "hidden", "inactivo", "inactive");
+
     return {
-      id: crypto.randomUUID?.() ?? `${Date.now()}-${index}`,
+      id:
+        toStr(idRaw) ||
+        (typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${index}`),
       name,
       price,
       originalPrice,
@@ -557,11 +649,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       category,
       quantity,
       image,
-      imageId: "",
-      order: products.length + index,
-      featured,
-      hidden,
-    };
+      imageId,
+      order: typeof orderNum === "number" ? orderNum : products.length + index,
+      featured: toBool(featuredRaw, false),
+      hidden: toBool(hiddenRaw, false),
+    } as Product;
   };
 
   const handleExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -591,7 +683,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       // Mapear filas a productos
       const mapped = rows
         .map((row, i) => mapExcelRow(row, i))
-        .filter((p): p is Partial<Product> => p !== null && !!p.name);
+        .filter((p): p is Product => p !== null && !!p.name);
 
       if (!mapped.length) {
         alert(
@@ -613,9 +705,36 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setImportingExcel(true);
 
     try {
-      excelPreview.mapped.forEach((p) => {
-        onAdd(p as Product);
+      // Importación tipo UPSERT:
+      // - Si el Excel trae un id/código/sku/referencia que ya existe, actualiza ese producto.
+      // - Si no existe, lo crea como producto nuevo.
+      //
+      // Importante: para actualizar masivamente sin duplicar, el Excel debe traer
+      // la columna id, codigo, sku, referencia o ref con el mismo valor del producto existente.
+      excelPreview.mapped.forEach((p, index) => {
+        const existingProduct = products.find(
+          (existing) => String(existing.id) === String(p.id)
+        );
+
+        if (existingProduct) {
+          const { id, ...updates } = p as Product;
+
+          onUpdate(existingProduct.id, {
+            ...updates,
+            order:
+              typeof updates.order === "number"
+                ? updates.order
+                : existingProduct.order,
+          } as Partial<Product>);
+        } else {
+          onAdd({
+            ...p,
+            order:
+              typeof p.order === "number" ? p.order : products.length + index,
+          });
+        }
       });
+
       setExcelPreview(null);
       setCurrentPage(totalPages);
     } finally {
@@ -1140,9 +1259,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                   <span className="font-semibold text-slate-500">
                     Columnas detectadas automáticamente:
                   </span>{" "}
-                  nombre, precio, precio_anterior, descripcion, categoria, cantidad,imagen,
-                  destacado, oculto. También se aceptan sus variantes en inglés
-                  (name, price, category, etc.).
+                  id, nombre/name, precio/price, originalPrice/precio_anterior,
+                  descripcion, categoria, cantidad/stock, imagen/image, imageId, order,
+                  featured/destacado y hidden/oculto.
                 </p>
               </div>
 
