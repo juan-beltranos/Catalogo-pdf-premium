@@ -183,12 +183,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         ) as HTMLElement[]
       ).filter((el) => isNotBadgeOrControl(el));
 
-      // En algunas plantillas el contenedor real de imagen no trae una clase fija.
-      // Antes se tomaba el primer hijo de la tarjeta, pero en plantillas con badge
-      // de categoría ese primer hijo puede ser el badge; por eso el badge se estiraba
-      // y salía como un óvalo gigante encima de la imagen.
-      // Ahora inferimos el contenedor subiendo desde la imagen hasta el hijo directo
-      // de .product-pdf que contiene la imagen, ignorando badges, precio y botones.
       const inferred = (
         Array.from(root.querySelectorAll(".product-pdf")) as HTMLElement[]
       )
@@ -1413,10 +1407,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       `Hola, te comparto el catálogo PDF${selectedCategory !== "__ALL__" ? ` de la categoría ${selectedCategory}` : ""} 📄`
     );
 
-    // En móvil intentamos abrir directamente la APP de WhatsApp.
-    // Nota: WhatsApp no permite adjuntar un PDF automáticamente usando whatsapp:// o wa.me;
-    // por eso el PDF se comparte con Web Share API si el navegador lo soporta, o se descarga
-    // y luego se abre WhatsApp para que el usuario lo adjunte como documento.
     if (isMobile) {
       window.location.href = `whatsapp://send?text=${message}`;
 

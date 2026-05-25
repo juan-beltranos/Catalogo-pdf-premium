@@ -131,6 +131,16 @@ const getField = (row: ExcelRow, ...aliases: string[]): any => {
 const toStr = (v: any): string =>
   v === undefined || v === null ? "" : String(v).trim();
 
+const firstUrl = (v: any): string => {
+  const value = toStr(v);
+  if (!value) return "";
+
+  return value
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean)[0] || "";
+};
+
 const isBlank = (v: any) =>
   v === undefined || v === null || String(v).trim() === "";
 
@@ -594,9 +604,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     const quantity =
       quantityRaw !== undefined ? Math.max(0, Math.trunc(toNum(quantityRaw))) : 0;
 
-    const image = toStr(
+    const image = firstUrl(
       getField(
         row,
+        "imagenes_urls",
+        "imagenes_url",
+        "imagenes",
+        "imagen_urls",
+        "imagen_url",
         "imagen",
         "image",
         "foto",
@@ -705,12 +720,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setImportingExcel(true);
 
     try {
-      // Importación tipo UPSERT:
-      // - Si el Excel trae un id/código/sku/referencia que ya existe, actualiza ese producto.
-      // - Si no existe, lo crea como producto nuevo.
-      //
-      // Importante: para actualizar masivamente sin duplicar, el Excel debe traer
-      // la columna id, codigo, sku, referencia o ref con el mismo valor del producto existente.
       excelPreview.mapped.forEach((p, index) => {
         const existingProduct = products.find(
           (existing) => String(existing.id) === String(p.id)
