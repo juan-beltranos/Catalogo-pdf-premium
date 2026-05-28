@@ -108,17 +108,51 @@ export const App: React.FC = () => {
 
                 <StoreForm storeInfo={storeInfo} onUpdate={updateStoreInfo} />
 
-                <div className="hidden lg:block bg-blue-50 p-6 rounded-2xl border border-blue-100">
-                  <h4 className="font-bold text-blue-900 mb-2 flex items-center gap-2">
+                <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                  <h4 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
                     <Sparkles className="w-4 h-4" />
-                    Tip Pro
+                    Herramientas externas gratis
                   </h4>
 
-                  <p className="text-sm text-blue-700 leading-relaxed">
-                    Personaliza los colores y la tipografía eligiendo una de nuestras
-                    plantillas. Tus datos se guardan automáticamente.
-                  </p>
+                  <div className="space-y-4 text-sm text-blue-700 leading-relaxed">
+                    <div>
+                      <p className="font-semibold text-blue-900">
+                        Optimizar o comprimir PDF
+                      </p>
+                      <p>
+                        Usa iLovePDF para reducir el peso de tu catálogo antes de compartirlo.
+                      </p>
+                      <a
+                        href="https://www.ilovepdf.com/es/comprimir_pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-1 font-semibold text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Comprimir PDF gratis
+                      </a>
+                    </div>
+
+                    <div>
+                      <p className="font-semibold text-blue-900">
+                        Crear catálogo digital
+                      </p>
+                      <p>
+                        Usa Heyzine para convertir tu PDF en un catálogo digital interactivo.
+                        Para usar esta herramienta debes crear una cuenta gratuita.
+                      </p>
+                      <a
+                        href="https://heyzine.com/es"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-1 font-semibold text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Crear catálogo digital
+                      </a>
+                    </div>
+                  </div>
                 </div>
+
+
               </div>
 
               <div className="lg:col-span-8">
@@ -162,7 +196,7 @@ export const App: React.FC = () => {
       </main>
 
       {/* Footer Info */}
-      <footer className="mt-20 border-t border-slate-200">
+      <footer className="border-t border-slate-200">
         <div className="max-w-6xl mx-auto px-4 py-10">
           <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm">
             <a
