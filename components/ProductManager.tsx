@@ -283,6 +283,56 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [products]);
 
+  const handleAutoOrganizeByCategory = () => {
+    if (!products.length) return;
+
+    const confirmed = window.confirm(
+      "¿Organizar todos los productos por categoría?\n\nLos productos se reordenarán agrupando las categorías alfabéticamente. Esta acción se puede deshacer volviendo a ordenar manualmente."
+    );
+    if (!confirmed) return;
+
+    // Agrupar productos por categoría
+    const groups = new Map<string, Product[]>();
+    const noCategory: Product[] = [];
+
+    for (const p of products) {
+      const cat = (p.category || "").trim();
+      if (!cat) {
+        noCategory.push(p);
+      } else {
+        if (!groups.has(cat)) groups.set(cat, []);
+        groups.get(cat)!.push(p);
+      }
+    }
+
+    const sortedCategories = Array.from(groups.keys()).sort((a, b) =>
+      a.localeCompare(b, "es", { sensitivity: "base" })
+    );
+
+    let orderIndex = 0;
+
+    for (const cat of sortedCategories) {
+      const group = groups.get(cat)!;
+      const sorted = [...group].sort((a, b) => {
+        const ao = typeof a.order === "number" ? a.order : Number(a.id);
+        const bo = typeof b.order === "number" ? b.order : Number(b.id);
+        return ao - bo;
+      });
+      for (const p of sorted) {
+        onUpdate(p.id, { order: orderIndex });
+        orderIndex++;
+      }
+    }
+
+    for (const p of noCategory) {
+      onUpdate(p.id, { order: orderIndex });
+      orderIndex++;
+    }
+
+    setCategoryFilter("__ALL__");
+    setCurrentPage(1);
+  };
+
   const filteredProducts = useMemo(() => {
     const query = searchTerm
       .trim()
@@ -1163,6 +1213,16 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>Exportar Excel</span>
+          </button>
+
+          <button
+            onClick={handleAutoOrganizeByCategory}
+            disabled={!products.length}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-violet-600 text-white px-3 py-2 rounded-xl text-sm hover:bg-violet-700 transition-colors shadow-lg shadow-violet-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Agrupar todos los productos por categoría automáticamente"
+          >
+            <Tag className="w-4 h-4" />
+            <span>Organizar por categoría</span>
           </button>
 
           <input
