@@ -230,6 +230,7 @@ export const App: React.FC = () => {
           products={products}
           businessWhatsapp={storeInfo.whatsapp || ''}
           pdfProductsPerPage={(storeInfo as any).pdfProductsPerPage ?? 4}
+          coverImage={storeInfo.coverImage}
         />
       )}
     </div>

@@ -23,6 +23,7 @@ export interface StoreInfo {
   whatsapp: string;
   facebook?: string;
   instagram?: string;
+  additionalInfo?: string;
   color: string;
   logo?: string;
   templateId: TemplateId;
@@ -30,6 +31,7 @@ export interface StoreInfo {
   imageFit?: ImageFit;
   headerMode?: 'color' | 'image';
   headerImage?: string;
+  coverImage?: string;
   pdfProductsPerPage?: number;
 }
 

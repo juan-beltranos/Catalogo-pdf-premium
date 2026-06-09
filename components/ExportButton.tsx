@@ -3,7 +3,7 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { getImageUrl } from "@/helper/imageDB";
 import { groupByCategory, slug } from "../helper/catalog";
-import { Product } from "@/types";
+import { Product, StoreInfo } from "@/types";
 import { normalizeWaNumber } from "@/helper/social";
 import { formatCurrency } from "@/constants";
 
@@ -13,6 +13,7 @@ interface ExportButtonProps {
   products: Product[];
   businessWhatsapp: string;
   pdfProductsPerPage?: number;
+  coverImage?: StoreInfo["coverImage"];
 }
 
 export const ExportButton: React.FC<ExportButtonProps> = ({
@@ -21,6 +22,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   products,
   businessWhatsapp,
   pdfProductsPerPage = 4,
+  coverImage,
 }) => {
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
@@ -37,8 +39,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState("");
 
-  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isIOS =
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const isMobile = isAndroid || isIOS;
 
   const categories = useMemo(() => {
     const groups = groupByCategory(products);
@@ -224,8 +229,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     const jpegQuality =
       resolvedQuality === "alta"
-        ? isIOS ? 0.72 : 0.86
-        : isIOS ? 0.55 : 0.7;
+        ? isIOS ? 0.76 : 0.88
+        : isIOS ? 0.62 : 0.76;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -350,6 +355,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       clone.style.opacity = "1";
 
       container.appendChild(clone);
+
+      (
+        Array.from(
+          clone.querySelectorAll(
+            "#catalog-capture-area, .products-grid, .catalog-footer, [data-pdf-footer='true']"
+          )
+        ) as HTMLElement[]
+      ).forEach((el) => {
+        el.style.background = "#ffffff";
+        el.style.backgroundColor = "#ffffff";
+      });
 
       clone.querySelectorAll('[data-hide-on-pdf="true"]').forEach((el) => {
         (el as HTMLElement).style.display = "none";
@@ -552,7 +568,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           img.crossOrigin = "anonymous";
           img.referrerPolicy = "no-referrer";
 
-          if (!img.src && id) {
+          const attrSrc = img.getAttribute("src") || "";
+
+          if (!attrSrc && id) {
             const url = await getImageUrl(id);
             if (url) {
               img.src = url;
@@ -581,7 +599,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         await Promise.all(
           batch.map(async (img) => {
-            const src = img.getAttribute("src") || "";
+            const id = img.dataset.imgid;
+            let src = img.getAttribute("src") || "";
+
+            if (!src && id) {
+              const url = await getImageUrl(id);
+              if (url) {
+                img.src = url;
+                src = url;
+                if (url.startsWith("blob:")) objectUrlsToRevoke.push(url);
+              }
+            }
 
             if (!src) return;
 
@@ -601,6 +629,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               const dataUrl = await blobToDataUrl(blob);
               img.src = dataUrl;
               await waitLoad(img, 5000);
+
+              const wrap = img.parentElement;
+              wrap
+                ?.querySelectorAll(".absolute.inset-0")
+                .forEach((el) => el.remove());
             } catch {
               // Intentar via canvas como último recurso en iOS
               if (isIOS && img.complete && img.naturalWidth > 0) {
@@ -619,6 +652,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       updateProgress(62, "Ajustando diseño del PDF...");
 
       imgs.forEach((img) => {
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          img.parentElement
+            ?.querySelectorAll(".absolute.inset-0")
+            .forEach((el) => el.remove());
+        }
+
         img.style.width = "auto";
         img.style.height = "auto";
         img.style.maxWidth = "100%";
@@ -810,7 +849,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           (clone.querySelector('[data-logo="true"] img') as HTMLImageElement | null) ||
           (clone.querySelector('.store-logo img, .logo img, .brand-logo img') as HTMLImageElement | null);
 
-        if (!logoImg) return "";
+        if (!logoImg) return coverImage || "";
 
         // Después de convertir las imágenes del catálogo, normalmente el logo ya queda en data URL.
         // Si se puede, lo pasamos por canvas para que jsPDF lo reciba como JPEG confiable.
@@ -827,6 +866,61 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         return "JPEG";
       };
+
+      const loadImage = (src: string) =>
+        new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("No se pudo cargar la portada"));
+          img.src = src;
+        });
+
+      const makeCoverPageImage = async (src: string) => {
+        const img = await loadImage(src);
+        const canvas = document.createElement("canvas");
+        canvas.width = 1600;
+        canvas.height = Math.round(canvas.width * (pageH / pageW));
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("No se pudo preparar la portada");
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const scale = Math.max(
+          canvas.width / img.naturalWidth,
+          canvas.height / img.naturalHeight
+        );
+        const drawW = img.naturalWidth * scale;
+        const drawH = img.naturalHeight * scale;
+        const drawX = (canvas.width - drawW) / 2;
+        const drawY = (canvas.height - drawH) / 2;
+
+        ctx.drawImage(img, drawX, drawY, drawW, drawH);
+        return canvas.toDataURL("image/jpeg", resolvedQuality === "alta" ? 0.9 : 0.78);
+      };
+
+      const hasCustomCover = !!coverImage;
+
+      if (hasCustomCover && coverImage) {
+        updateProgress(74, "Agregando portada personalizada...");
+
+        try {
+          const coverDataUrl = await makeCoverPageImage(coverImage);
+          pdf.addImage(
+            coverDataUrl,
+            getImageFormatForPdf(coverDataUrl),
+            0,
+            0,
+            pageW,
+            pageH,
+            undefined,
+            "FAST"
+          );
+        } catch (err) {
+          console.warn("No se pudo agregar la portada personalizada:", err);
+        }
+      }
 
       const addPdfWatermark = () => {
         if (!watermarkLogoSrc) return;
@@ -1141,7 +1235,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           background:#ffffff !important;
         `;
 
-        controlHeaderFooter(page, includeHeader, false);
+        controlHeaderFooter(page, includeHeader, true);
         collapseGridParents(page);
         document.body.appendChild(page);
 
@@ -1269,8 +1363,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           rowIndex++;
         }
 
-        const isLastPage = rowIndex >= rows.length;
-        controlHeaderFooter(page, pageIndex === 0, isLastPage);
+        controlHeaderFooter(page, pageIndex === 0, true);
         collapseGridParents(page);
 
         await waitMs(isIOS ? 200 : 50);
@@ -1298,7 +1391,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           contentHeightCssPx / cssPxPerMm
         );
 
-        if (pageIndex > 0) pdf.addPage();
+        if (hasCustomCover || pageIndex > 0) pdf.addPage();
 
         // Centrado vertical de las páginas internas:
         // La primera página conserva el hero/header arriba.
@@ -1369,26 +1462,34 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     }
   };
 
-  const downloadBlob = async (blob: Blob, outName: string) => {
+  const downloadBlob = async (
+    blob: Blob,
+    outName: string,
+    opts: { preferNativeShare?: boolean } = {}
+  ) => {
+    const preferNativeShare = opts.preferNativeShare ?? true;
     // 1) Móvil: Web Share API (más confiable en iOS y Android)
-    if (isMobile && typeof navigator.share === "function") {
+    if (preferNativeShare && isMobile && typeof navigator.share === "function") {
       const file = new File([blob], outName, { type: "application/pdf" });
-      const canShare =
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] });
+      const canShare = canSharePdfFile(file);
 
       if (canShare) {
         try {
-          await navigator.share({
-            title: "Catálogo PDF",
-            files: [file],
-          });
+          await sharePdfFileNow(file, "Catalogo PDF", "Te comparto el catalogo en PDF");
           return;
         } catch (err: any) {
           if (err?.name === "AbortError") return;
           // Continúa con fallback
         }
       }
+    }
+
+    if (isIOS) {
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) window.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return;
     }
 
     // 2) Fallback: data URL base64 (evita el visor nativo de Android/iOS)
@@ -1423,6 +1524,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
+  const prepareMobilePdfAction = (
+    blob: Blob,
+    outName: string,
+    title = "Catalogo",
+    text = "Te comparto el catalogo en PDF"
+  ) => {
+    const file = new File([blob], outName, { type: "application/pdf" });
+    setSharedFileName(outName);
+    setPendingShareFile(file);
+    setPendingShareTitle(title);
+    setPendingShareText(text);
+    setShowNativeShareReady(true);
+  };
+
   const handleDownloadPdfAll = async () => {
     try {
       setLoading(true);
@@ -1435,9 +1550,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       });
 
       setProgress(100);
-      setProgressText("Descargando PDF...");
+      setProgressText(isMobile ? "PDF listo..." : "Descargando PDF...");
 
-      await downloadBlob(blob, outName);
+      if (isMobile) {
+        prepareMobilePdfAction(blob, outName);
+      } else {
+        await downloadBlob(blob, outName);
+      }
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF.");
@@ -1463,9 +1582,18 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       });
 
       setProgress(100);
-      setProgressText("Descargando PDF...");
+      setProgressText(isMobile ? "PDF listo..." : "Descargando PDF...");
 
-      await downloadBlob(blob, outName);
+      if (isMobile) {
+        prepareMobilePdfAction(
+          blob,
+          outName,
+          `Catalogo - ${selectedCategory}`,
+          `Te comparto el catalogo de ${selectedCategory} en PDF`
+        );
+      } else {
+        await downloadBlob(blob, outName);
+      }
     } catch (error) {
       console.error(error);
       alert("Error generando/descargando PDF por categoría.");
@@ -1523,11 +1651,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     if (!pendingShareFile) return;
 
     try {
-      await sharePdfFileNow(
-        pendingShareFile,
-        pendingShareTitle,
-        pendingShareText
-      );
+      if (canSharePdfFile(pendingShareFile)) {
+        await sharePdfFileNow(
+          pendingShareFile,
+          pendingShareTitle,
+          pendingShareText
+        );
+      } else {
+        await downloadBlob(pendingShareFile, pendingShareFile.name, {
+          preferNativeShare: false,
+        });
+      }
 
       setShowNativeShareReady(false);
       setPendingShareFile(null);
@@ -1652,7 +1786,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               </div>
               <div>
                 <p className="font-bold text-slate-800 text-base leading-tight">
-                  PDF listo para enviar
+                  PDF listo
                 </p>
                 <p className="text-xs text-slate-400">{sharedFileName}</p>
               </div>
@@ -1660,27 +1794,29 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
             <p className="text-sm text-slate-500 mb-4">
               Toca el botón de abajo. Se abrirá el compartir del celular; selecciona
-              WhatsApp, elige la persona o grupo y el PDF irá adjunto.
+              WhatsApp u otra app, elige la persona o grupo y el PDF ira adjunto.
             </p>
 
             <button
               onClick={handleSharePreparedPdf}
               className="w-full h-12 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition mb-2"
             >
-              Abrir WhatsApp con PDF adjunto
+              Compartir PDF
             </button>
 
             <button
               onClick={async () => {
                 if (pendingShareFile) {
-                  await downloadBlob(pendingShareFile, pendingShareFile.name);
+                  await downloadBlob(pendingShareFile, pendingShareFile.name, {
+                    preferNativeShare: false,
+                  });
                   setShowNativeShareReady(false);
                   setShowShareInstructions(true);
                 }
               }}
               className="w-full h-10 rounded-xl text-sm text-slate-500 hover:text-slate-700 transition mb-1"
             >
-              Descargar PDF manualmente
+              Abrir o descargar PDF
             </button>
 
             <button

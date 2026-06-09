@@ -77,13 +77,35 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     primaryColor
   );
 
+  const footerInfo = useMemo(() => {
+    const value = (storeInfo.additionalInfo || "").replace(/\s+/g, " ").trim();
+    if (value.length <= 170) return value;
+    return `${value.slice(0, 167).trim()}...`;
+  }, [storeInfo.additionalInfo]);
+
+  const previewPageClass = `bg-white w-full max-w-[800px] overflow-hidden text-slate-900 flex flex-col shadow-sm ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
+    }`;
+
   return (
-    <div className="flex justify-center w-full min-h-screen p-4 md:p-8 bg-slate-200/30">
+    <div className="flex w-full min-h-screen flex-col items-center gap-6 p-3 md:p-8 bg-slate-200/30">
+      {storeInfo.coverImage && (
+        <div
+          className={`w-full max-w-[800px] aspect-[210/297] overflow-hidden bg-white shadow-sm ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
+            }`}
+          aria-label="Previsualizacion de portada"
+        >
+          <img
+            src={storeInfo.coverImage}
+            alt="Portada personalizada"
+            className="h-full w-full object-cover"
+          />
+        </div>
+      )}
+
       <div
         ref={previewRef}
         id="catalog-capture-area"
-        className={`bg-white w-full w-[800px] min-w-[800px]overflow-hidden text-slate-900 flex flex-col ${isModern ? 'rounded-[2rem]' : isMinimalist ? 'rounded-none' : 'rounded-lg'
-          }`}
+        className={previewPageClass}
         style={{
           minHeight: '1120px',
           ['--brand-color' as any]: storeInfo.color || '#f97316',
@@ -373,7 +395,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
           </div>
         )}
 
-        <div className="px-4 py-6 md:p-10 md:pt-4 flex-grow">
+        <div className="px-4 py-6 md:p-10 md:pt-4 flex-grow bg-white">
           <div
             className={`products-grid grid grid-cols-1 md:grid-cols-2 ${isMinimalist ? 'gap-x-7 gap-y-8' : 'gap-x-5 gap-y-6'
               }`}
@@ -516,18 +538,31 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
         </div>
 
         <div
-          className={`mt-auto px-4 py-6 md:p-10 border-t border-slate-50 ${isClassic ? 'bg-stone-50/70' : ''
-            }`}
+          data-pdf-footer="true"
+          className="catalog-footer mt-auto border-t border-slate-100 bg-white px-4 py-3 md:px-8 md:py-4"
         >
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            {footerInfo && (
+              <div className="mx-auto w-full max-w-2xl rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-center">
+                <p
+                  className="break-words text-[10px] leading-snug text-slate-600"
+                  title={storeInfo.additionalInfo}
+                >
+                  {footerInfo}
+                </p>
+              </div>
+            )}
+
             {(storeInfo.whatsapp || storeInfo.facebook || storeInfo.instagram) && (
-              <div className="flex flex-wrap justify-center items-center gap-6 text-slate-600 text-xs font-medium">
+              <div className="flex flex-wrap justify-center items-center gap-4 text-slate-600 text-[10px] font-medium">
                 {storeInfo.whatsapp && (
                   <a
                     href={`https://wa.me/${wa}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     data-pdf-link="social"
+                    aria-label="WhatsApp"
+                    title="WhatsApp"
                     className="flex items-center gap-2 hover:text-green-600 transition-colors"
                   >
                     <MessageCircle className="w-4 h-4" />
@@ -541,6 +576,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                     href={facebookUrl(storeInfo.facebook)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label="Facebook"
+                    title={facebookLabel(storeInfo.facebook)}
                     className="flex items-center gap-2 hover:text-blue-600 transition-colors"
                   >
                     <Facebook className="w-4 h-4" />
@@ -554,6 +591,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                     href={instagramUrl(storeInfo.instagram)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label="Instagram"
+                    title={instagramLabel(storeInfo.instagram)}
                     className="flex items-center gap-2 hover:text-pink-600 transition-colors"
                   >
                     <Instagram className="w-4 h-4" />
