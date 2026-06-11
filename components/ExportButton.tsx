@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import { getImageUrl } from "@/helper/imageDB";
+import { getImageBlob, getImageUrl } from "@/helper/imageDB";
 import { groupByCategory, slug } from "../helper/catalog";
 import { Product, StoreInfo } from "@/types";
 import { normalizeWaNumber } from "@/helper/social";
@@ -140,7 +140,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     const PDF_PRODUCT_MEDIA = getPdfMediaSize(PDF_PRODUCTS_PER_PAGE, PDF_GRID_COLUMNS);
 
     const PDF_BADGE_OR_CONTROL_SELECTOR =
-      '[data-category-badge="true"], [data-stock-badge="true"], [data-price-inline="true"], [data-action-hint="true"], [data-pdf-link="product"]';
+      '[data-featured-badge="true"], [data-category-badge="true"], [data-stock-badge="true"], [data-price-inline="true"], [data-action-hint="true"], [data-pdf-link="product"]';
 
     const isBadgeOrControl = (el: HTMLElement | null) => {
       return !!el && el.matches(PDF_BADGE_OR_CONTROL_SELECTOR);
@@ -210,6 +210,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       return Array.from(new Set([...explicit, ...inferred]));
     };
 
+    const getPrimaryProductMediaEl = (card: HTMLElement): HTMLElement | null => {
+      const explicit = card.querySelector(
+        '.product-media, [data-product-media="true"], [data-product-image-wrap="true"]'
+      ) as HTMLElement | null;
+
+      if (explicit && !isBadgeOrControl(explicit)) return explicit;
+
+      const inferred = getProductMediaEls(card)[0] || null;
+      if (inferred && inferred !== card && !inferred.matches(".product-pdf")) return inferred;
+
+      return null;
+    };
+
     const getPdfTextSizes = (productsPerPage: number) => {
       if (productsPerPage <= 1) return { title: 38, description: 31, price: 22, badge: 17, action: 17 };
       if (productsPerPage <= 2) return { title: 32, description: 20, price: 20, badge: 16, action: 16 };
@@ -240,6 +253,38 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
     const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+    const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, message: string) =>
+      new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+        promise.then(
+          (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          (error) => {
+            clearTimeout(timer);
+            reject(error);
+          }
+        );
+      });
+
+    const prepareIosCaptureRoot = (root: HTMLElement) => {
+      if (!isIOS) return;
+
+      (Array.from(root.querySelectorAll("*")) as HTMLElement[]).forEach((el) => {
+        el.style.animation = "none";
+        el.style.transition = "none";
+        el.style.transform = "none";
+        el.style.filter = "none";
+        el.style.backdropFilter = "none";
+        el.style.boxShadow = "none";
+        el.style.textShadow = "none";
+        el.style.mixBlendMode = "normal";
+        el.style.willChange = "auto";
+        el.style.contain = "none";
+      });
+    };
+
     const waitLoad = (img: HTMLImageElement, timeoutMs = 8000) => {
       if (img.complete && img.naturalWidth > 0) return Promise.resolve();
 
@@ -261,21 +306,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     };
 
     const getPos = (el: HTMLElement, stop: HTMLElement) => {
-      let top = 0;
-      let left = 0;
-      let cur: HTMLElement | null = el;
-
-      while (cur && cur !== stop) {
-        top += cur.offsetTop || 0;
-        left += cur.offsetLeft || 0;
-        cur = cur.offsetParent as HTMLElement | null;
-      }
+      const elRect = el.getBoundingClientRect();
+      const stopRect = stop.getBoundingClientRect();
 
       return {
-        top,
-        left,
-        width: el.offsetWidth,
-        height: el.offsetHeight,
+        top: elRect.top - stopRect.top,
+        left: elRect.left - stopRect.left,
+        width: elRect.width || el.offsetWidth,
+        height: elRect.height || el.offsetHeight,
       };
     };
 
@@ -321,6 +359,61 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       }
     };
 
+    const loadPdfImage = (src: string, timeoutMs = 8000) =>
+      new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        let settled = false;
+
+        const done = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (error) reject(error);
+          else resolve(img);
+        };
+
+        const timer = setTimeout(() => done(new Error("Tiempo agotado cargando imagen")), timeoutMs);
+        img.onload = () => done();
+        img.onerror = () => done(new Error("No se pudo cargar la imagen"));
+        if (!src.startsWith("data:") && !src.startsWith("blob:")) img.crossOrigin = "anonymous";
+        img.decoding = "sync";
+        img.src = src;
+      });
+
+    const imageSourceToPdfDataUrl = async (src: string, maxSide = isIOS ? 640 : 860) => {
+      const img = await loadPdfImage(src);
+      const naturalW = img.naturalWidth || img.width || 1;
+      const naturalH = img.naturalHeight || img.height || 1;
+      const scale = Math.min(1, maxSide / Math.max(naturalW, naturalH));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(naturalW * scale));
+      canvas.height = Math.max(1, Math.round(naturalH * scale));
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return src;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return {
+        src: canvas.toDataURL("image/jpeg", isIOS ? 0.7 : 0.78),
+        naturalWidth: canvas.width,
+        naturalHeight: canvas.height,
+      };
+    };
+
+    const blobToPdfDataUrl = async (blob: Blob) => {
+      const url = URL.createObjectURL(blob);
+      objectUrlsToRevoke.push(url);
+
+      try {
+        return await imageSourceToPdfDataUrl(url);
+      } catch {
+        const src = await blobToDataUrl(blob);
+        return { src, naturalWidth: 1, naturalHeight: 1 };
+      }
+    };
+
     const container = document.createElement("div");
     container.style.position = "absolute";
     container.style.left = "-99999px";
@@ -363,6 +456,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           )
         ) as HTMLElement[]
       ).forEach((el) => {
+        el.style.background = "transparent";
+        el.style.backgroundColor = "transparent";
         el.style.background = "#ffffff";
         el.style.backgroundColor = "#ffffff";
       });
@@ -530,6 +625,27 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }
       );
 
+      (Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[]).forEach((card) => {
+        card.style.background = "#ffffff";
+        card.style.backgroundColor = "#ffffff";
+
+        (
+          Array.from(
+            card.querySelectorAll(
+              ".product-media, [data-product-media='true'], [data-product-image-wrap='true']"
+            )
+          ) as HTMLElement[]
+        ).forEach((el) => {
+          el.style.background = "#ffffff";
+          el.style.backgroundColor = "#ffffff";
+        });
+
+        (Array.from(card.children) as HTMLElement[]).forEach((child) => {
+          child.style.background = "#ffffff";
+          child.style.backgroundColor = "#ffffff";
+        });
+      });
+
       (Array.from(clone.querySelectorAll(".product-pdf h3")) as HTMLElement[]).forEach(
         (el) => {
           el.style.fontSize = `${PDF_TEXT.title}px`;
@@ -542,6 +658,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       ).forEach((el) => {
         // Para 1 producto por página, la descripción debe verse más grande,
         // pero siempre por debajo del tamaño del título.
+        el.style.background = "transparent";
+        el.style.backgroundColor = "transparent";
         const safeDescriptionSize = Math.min(PDF_TEXT.description, PDF_TEXT.title - 4);
         el.style.fontSize = `${safeDescriptionSize}px`;
         el.style.lineHeight = PDF_PRODUCTS_PER_PAGE <= 1 ? "1.42" : "1.55";
@@ -551,10 +669,80 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         (Array.from(el.querySelectorAll("p, span, strong, em, b, i, li, div")) as HTMLElement[]).forEach((child) => {
           child.style.fontSize = "inherit";
           child.style.lineHeight = "inherit";
+          child.style.background = "transparent";
+          child.style.backgroundColor = "transparent";
         });
       });
 
-      const imgs = Array.from(clone.querySelectorAll("img")) as HTMLImageElement[];
+      const imgs = (Array.from(clone.querySelectorAll("img")) as HTMLImageElement[]).filter(
+        (img) => !img.closest(".product-pdf")
+      );
+      const productImageById = new Map(
+        products.map((product) => [String(product.id), product] as const)
+      );
+      type ProductPdfImage = {
+        src: string;
+        naturalWidth: number;
+        naturalHeight: number;
+      };
+
+      const productPdfImageSrcCache = new Map<string, Promise<ProductPdfImage>>();
+
+      const resolveProductPdfImageSrc = async (product: Product): Promise<ProductPdfImage> => {
+        const key = String(product.id);
+        const cached = productPdfImageSrcCache.get(key);
+        if (cached) return cached;
+
+        const task = (async () => {
+          if (product.image?.startsWith("data:")) {
+            try {
+              return await imageSourceToPdfDataUrl(product.image);
+            } catch {
+              return { src: product.image, naturalWidth: 1, naturalHeight: 1 };
+            }
+          }
+
+          if (product.imageId) {
+            try {
+              const blob = await getImageBlob(product.imageId);
+              if (blob) return await blobToPdfDataUrl(blob);
+            } catch (error) {
+              console.warn("No se pudo leer imagen de producto desde IndexedDB:", error);
+            }
+          }
+
+          let source = product.image || "";
+          if (!source && product.imageId) {
+            try {
+              source = (await getImageUrl(product.imageId)) || "";
+            } catch (error) {
+              console.warn("No se pudo crear URL de imagen de producto:", error);
+            }
+          }
+          if (!source) return { src: "", naturalWidth: 1, naturalHeight: 1 };
+
+          if (source.startsWith("data:")) {
+            try {
+              return await imageSourceToPdfDataUrl(source);
+            } catch {
+              return { src: source, naturalWidth: 1, naturalHeight: 1 };
+            }
+          }
+          if (source.startsWith("blob:")) objectUrlsToRevoke.push(source);
+
+          try {
+            const blob = source.startsWith("blob:")
+              ? await (await fetch(source)).blob()
+              : await safeFetchBlob(source, 8000);
+            return await blobToPdfDataUrl(blob);
+          } catch {
+            return { src: source, naturalWidth: 1, naturalHeight: 1 };
+          }
+        })();
+
+        productPdfImageSrcCache.set(key, task);
+        return task;
+      };
 
       updateProgress(18, "Preparando imágenes...");
 
@@ -565,10 +753,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
           img.setAttribute("loading", "eager");
           img.setAttribute("decoding", "sync");
-          img.crossOrigin = "anonymous";
           img.referrerPolicy = "no-referrer";
 
           const attrSrc = img.getAttribute("src") || "";
+          if (attrSrc.startsWith("data:") || attrSrc.startsWith("blob:")) {
+            img.removeAttribute("crossorigin");
+            img.crossOrigin = "";
+          } else {
+            img.crossOrigin = "anonymous";
+          }
 
           if (!attrSrc && id) {
             const url = await getImageUrl(id);
@@ -603,15 +796,29 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             let src = img.getAttribute("src") || "";
 
             if (!src && id) {
-              const url = await getImageUrl(id);
-              if (url) {
-                img.src = url;
-                src = url;
-                if (url.startsWith("blob:")) objectUrlsToRevoke.push(url);
+              const blob = await getImageBlob(id);
+              if (blob) {
+                src = await blobToDataUrl(blob);
+                img.src = src;
+                img.setAttribute("src", src);
+              } else {
+                const url = await getImageUrl(id);
+                if (url) {
+                  img.src = url;
+                  src = url;
+                  if (url.startsWith("blob:")) objectUrlsToRevoke.push(url);
+                }
               }
             }
 
             if (!src) return;
+
+            if (src.startsWith("data:") || src.startsWith("blob:")) {
+              img.removeAttribute("crossorigin");
+              img.crossOrigin = "";
+            } else {
+              img.crossOrigin = "anonymous";
+            }
 
             // Si ya es data URL, no hacer nada
             if (src.startsWith("data:")) return;
@@ -819,6 +1026,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
       type LinkArea = {
         url: string;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      };
+
+      type ProductImageArea = {
+        productId: string;
+        src: string;
+        naturalWidth: number;
+        naturalHeight: number;
         left: number;
         top: number;
         width: number;
@@ -1065,6 +1283,101 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         return getPdfContentHeight(page, grid) <= maxHeightPx;
       };
 
+      const scalePageCardsForPdf = (grid: HTMLElement, factor: number) => {
+        const mediaFactor = Math.min(2.6, Math.max(0.68, factor));
+        const textFactor = Math.min(1.32, Math.max(0.78, 0.92 + (factor - 1) * 0.34));
+        const gapFactor = Math.min(2.05, Math.max(0.8, 0.9 + (factor - 1) * 0.8));
+
+        grid.style.rowGap = `${Math.round(PDF_GRID_ROW_GAP_PX * gapFactor)}px`;
+
+        getProductMediaEls(grid).forEach((media) => {
+          const nextMin = Math.max(105, Math.round(PDF_PRODUCT_MEDIA.min * mediaFactor));
+          const nextMax = Math.max(nextMin, Math.round(PDF_PRODUCT_MEDIA.max * mediaFactor));
+          media.style.minHeight = `${nextMin}px`;
+          media.style.maxHeight = `${nextMax}px`;
+          media.style.height = `${nextMax}px`;
+        });
+
+        (Array.from(grid.querySelectorAll(".product-pdf h3")) as HTMLElement[]).forEach((el) => {
+          el.style.fontSize = `${Math.max(14, Math.round(PDF_TEXT.title * textFactor))}px`;
+          el.style.lineHeight = factor > 1 ? "1.2" : "1.18";
+        });
+
+        (Array.from(grid.querySelectorAll(".product-pdf .catalog-html")) as HTMLElement[]).forEach((el) => {
+          const nextSize = Math.max(10, Math.round(PDF_TEXT.description * Math.min(1.18, textFactor)));
+          el.style.fontSize = `${Math.min(nextSize, Math.max(10, Math.round(PDF_TEXT.title * textFactor) - 4))}px`;
+          el.style.lineHeight = factor > 1 ? "1.48" : "1.35";
+
+          (Array.from(el.querySelectorAll("p, span, strong, em, b, i, li, div")) as HTMLElement[]).forEach((child) => {
+            child.style.fontSize = "inherit";
+            child.style.lineHeight = "inherit";
+          });
+        });
+      };
+
+      const expandPageToUseSpace = async (page: HTMLElement, grid: HTMLElement, maxHeightPx: number) => {
+        const getProductSpace = () => {
+          const pageTop = page.getBoundingClientRect().top;
+          const gridRect = grid.getBoundingClientRect();
+          const cardsInPage = Array.from(grid.querySelectorAll(".product-pdf")) as HTMLElement[];
+          let productBottom = 0;
+
+          cardsInPage.forEach((card) => {
+            if (!isElementVisibleForPdf(card)) return;
+            const rect = card.getBoundingClientRect();
+            productBottom = Math.max(productBottom, rect.bottom - pageTop);
+          });
+
+          const footer = (
+            Array.from(
+              page.querySelectorAll('[data-pdf-footer="true"], .catalog-footer, .pdf-footer, footer')
+            ) as HTMLElement[]
+          ).find(isElementVisibleForPdf);
+
+          const footerTop = footer
+            ? footer.getBoundingClientRect().top - pageTop
+            : maxHeightPx;
+
+          return {
+            gridTop: gridRect.top - pageTop,
+            productBottom,
+            availableBottom: Math.min(maxHeightPx * 0.97, footerTop - 18),
+          };
+        };
+
+        const initialSpace = getProductSpace();
+        if (initialSpace.productBottom <= 0) return;
+
+        const currentBlockHeight = Math.max(1, initialSpace.productBottom - initialSpace.gridTop);
+        const targetBlockHeight = Math.max(1, initialSpace.availableBottom - initialSpace.gridTop);
+        const freeSpace = targetBlockHeight - currentBlockHeight;
+        if (freeSpace < 70) return;
+
+        const estimatedFactor = Math.min(2.6, Math.max(1.04, targetBlockHeight / currentBlockHeight));
+        const factors = [1.06, 1.12, 1.2, 1.3, 1.42, 1.58, 1.78, 1.98, 2.18, 2.38, 2.6]
+          .filter((factor) => factor <= estimatedFactor + 0.04);
+
+        let bestFactor = 1;
+
+        for (const factor of factors) {
+          scalePageCardsForPdf(grid, factor);
+          await waitMs(isIOS ? 60 : 16);
+          collapseGridParents(page);
+
+          const nextSpace = getProductSpace();
+          const nextHeight = getPdfContentHeight(page, grid);
+          if (nextHeight <= maxHeightPx && nextSpace.productBottom <= nextSpace.availableBottom) {
+            bestFactor = factor;
+          } else {
+            break;
+          }
+        }
+
+        scalePageCardsForPdf(grid, bestFactor);
+        await waitMs(isIOS ? 60 : 16);
+        collapseGridParents(page);
+      };
+
       const isElementVisibleForPdf = (el: HTMLElement) => {
         const style = window.getComputedStyle(el);
         return (
@@ -1245,6 +1558,68 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const renderDomPageCanvas = async (pageEl: HTMLElement, captureHeightCssPx: number) => {
         await waitMs(isIOS ? 150 : 50); // ── FIX iOS: dar tiempo al DOM antes de capturar
 
+        if (isIOS) {
+          prepareIosCaptureRoot(pageEl);
+
+          const buildIosOptions = (
+            scale: number,
+            imageTimeout: number,
+            allowTaint: boolean
+          ): Parameters<typeof html2canvas>[1] => ({
+            scale,
+            useCORS: true,
+            allowTaint,
+            backgroundColor: "#ffffff",
+            logging: false,
+            width: EXPORT_WIDTH_PX,
+            height: captureHeightCssPx,
+            windowWidth: EXPORT_WIDTH_PX,
+            windowHeight: captureHeightCssPx,
+            scrollX: 0,
+            scrollY: 0,
+            removeContainer: true,
+            imageTimeout,
+            onclone: (_clonedDoc, clonedEl) => {
+              clonedEl.style.visibility = "visible";
+              clonedEl.style.opacity = "1";
+              clonedEl.style.background = "#ffffff";
+              prepareIosCaptureRoot(clonedEl as HTMLElement);
+
+              Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
+                const htmlEl = el as HTMLElement;
+                if (!htmlEl.style) return;
+                if (htmlEl.dataset.pdfSkipBaseImage === "true") {
+                  htmlEl.style.display = "none";
+                  htmlEl.style.visibility = "hidden";
+                  htmlEl.style.opacity = "0";
+                  return;
+                }
+                if (htmlEl.style.visibility === "hidden") htmlEl.style.visibility = "visible";
+                if (htmlEl.style.opacity === "0") htmlEl.style.opacity = "1";
+                htmlEl.style.animation = "none";
+                htmlEl.style.transition = "none";
+              });
+            },
+          });
+
+          const captureIos = (options: Parameters<typeof html2canvas>[1]) =>
+            withTimeout(
+              html2canvas(pageEl, options),
+              18000,
+              "Tiempo agotado renderizando la pagina"
+            );
+
+          try {
+            return await captureIos(buildIosOptions(canvasScale, 5000, false));
+          } catch (error) {
+            console.warn("Reintentando captura PDF en iOS:", error);
+            updateProgress(76, "Reintentando renderizado en iOS...");
+            await waitMs(350);
+
+            return await captureIos(buildIosOptions(0.72, 2500, true));
+          }
+        }
+
         return await html2canvas(pageEl, {
           scale: canvasScale,
           useCORS: true,
@@ -1267,6 +1642,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
               const htmlEl = el as HTMLElement;
               if (!htmlEl.style) return;
+              if (htmlEl.dataset.pdfSkipBaseImage === "true") {
+                htmlEl.style.display = "none";
+                htmlEl.style.visibility = "hidden";
+                htmlEl.style.opacity = "0";
+                return;
+              }
               if (htmlEl.style.visibility === "hidden") htmlEl.style.visibility = "visible";
               if (htmlEl.style.opacity === "0") htmlEl.style.opacity = "1";
               htmlEl.style.animation = "none";
@@ -1279,11 +1660,50 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       const collectPageLinks = (page: HTMLElement): LinkArea[] => {
         const pageLinks: LinkArea[] = [];
 
+        const normalizePdfUrl = (url: string) => {
+          const value = (url || "").trim();
+          if (!value || value === "#") return "";
+
+          if (/^https?:\/\//i.test(value)) {
+            try {
+              const parsed = new URL(value);
+              if (parsed.hostname.replace(/^www\./i, "") === "wa.me") {
+                const phone = parsed.pathname.replace(/[^\d]/g, "");
+                return phone
+                  ? `https://api.whatsapp.com/send?phone=${phone}${parsed.search ? `&${parsed.search.slice(1)}` : ""}`
+                  : value;
+              }
+            } catch {
+              return value;
+            }
+
+            return value;
+          }
+
+          if (value.startsWith("www.")) return `https://${value}`;
+          return value;
+        };
+
         const pushPageLink = (el: HTMLElement, url: string) => {
-          if (!url || url === "#") return;
+          const normalizedUrl = normalizePdfUrl(url);
+          if (!normalizedUrl) return;
           const pos = getPos(el, page);
           if (pos.width <= 0 || pos.height <= 0) return;
-          pageLinks.push({ url, ...pos });
+          if (el.matches('[data-pdf-link="social"]')) {
+            const minTapSize = 44;
+            const width = Math.max(pos.width, minTapSize);
+            const height = Math.max(pos.height, minTapSize);
+            pageLinks.push({
+              url: normalizedUrl,
+              left: Math.max(0, pos.left - (width - pos.width) / 2),
+              top: Math.max(0, pos.top - (height - pos.height) / 2),
+              width,
+              height,
+            });
+            return;
+          }
+
+          pageLinks.push({ url: normalizedUrl, ...pos });
         };
 
         (
@@ -1317,7 +1737,119 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           pushPageLink(a, href);
         });
 
+        const socialEls = Array.from(
+          page.querySelectorAll('[data-pdf-link="social"]')
+        ) as HTMLElement[];
+
+        socialEls.forEach((el) => {
+          const href = (el as HTMLAnchorElement).getAttribute?.("href") || "";
+          const isWhatsapp = /wa\.me|whatsapp/i.test(href);
+          const directUrl = isWhatsapp && businessWa
+            ? `https://api.whatsapp.com/send?phone=${businessWa}`
+            : href;
+          pushPageLink(el, directUrl);
+        });
+
         return pageLinks;
+      };
+
+      const collectProductImageAreas = async (page: HTMLElement): Promise<ProductImageArea[]> => {
+        const pageTop = page.getBoundingClientRect().top;
+        const pageLeft = page.getBoundingClientRect().left;
+
+        const pageCards = Array.from(page.querySelectorAll(".product-pdf")) as HTMLElement[];
+
+        const areas = await Promise.all(
+          pageCards.map(async (card): Promise<ProductImageArea | null> => {
+          try {
+            const productId = String(card.dataset.productId || "");
+            const product = productImageById.get(productId);
+            if (!product) return null;
+
+            const media = getPrimaryProductMediaEl(card);
+            if (!media || !isElementVisibleForPdf(media)) return null;
+
+            const pdfImage = await resolveProductPdfImageSrc(product);
+            if (!pdfImage.src) return null;
+
+            const mediaRectRaw = media.getBoundingClientRect();
+            const mediaRect = {
+              left: mediaRectRaw.left,
+              top: mediaRectRaw.top,
+              width: mediaRectRaw.width,
+              height: mediaRectRaw.height,
+            };
+            let topInset = 0;
+
+          (
+            Array.from(
+              media.querySelectorAll(
+                '[data-featured-badge="true"], [data-category-badge="true"], [data-stock-badge="true"]'
+              )
+            ) as HTMLElement[]
+          ).forEach((badge) => {
+            if (!isElementVisibleForPdf(badge)) return;
+            const badgeRect = badge.getBoundingClientRect();
+            const overlapsTop =
+              badgeRect.bottom > mediaRect.top &&
+              badgeRect.top < mediaRect.top + mediaRect.height * 0.45;
+
+            if (overlapsTop) {
+              topInset = Math.max(topInset, badgeRect.bottom - mediaRect.top + 6);
+            }
+          });
+
+          const sideInset = Math.max(8, Math.round(mediaRect.width * 0.08));
+          const bottomInset = Math.max(8, Math.round(mediaRect.height * 0.08));
+          const width = Math.max(1, mediaRect.width - sideInset * 2);
+          const height = Math.max(1, mediaRect.height - topInset - bottomInset);
+          if (width < 12 || height < 12) return null;
+
+            return {
+              productId,
+              src: pdfImage.src,
+              naturalWidth: pdfImage.naturalWidth,
+              naturalHeight: pdfImage.naturalHeight,
+              left: mediaRect.left - pageLeft + sideInset,
+              top: mediaRect.top - pageTop + topInset,
+              width,
+              height,
+            };
+          } catch (error) {
+            console.warn("No se pudo preparar imagen de producto para PDF:", error);
+            return null;
+          }
+        })
+        );
+
+        return areas.filter((area): area is ProductImageArea => !!area);
+      };
+
+      const hideProductImagesForBaseCapture = (page: HTMLElement, imageAreas: ProductImageArea[]) => {
+        const replaceableProductIds = new Set(imageAreas.map((area) => area.productId));
+        if (replaceableProductIds.size <= 0) return;
+
+        (Array.from(page.querySelectorAll(".product-pdf")) as HTMLElement[]).forEach((card) => {
+          const productId = String(card.dataset.productId || "");
+          if (!replaceableProductIds.has(productId)) return;
+
+          (Array.from(card.querySelectorAll("img")) as HTMLImageElement[]).forEach((img) => {
+            img.dataset.pdfSkipBaseImage = "true";
+            img.style.display = "none";
+            img.style.visibility = "hidden";
+            img.style.opacity = "0";
+          });
+
+          card
+            .querySelectorAll(".absolute.inset-0")
+            .forEach((el) => {
+              const htmlEl = el as HTMLElement;
+              htmlEl.dataset.pdfSkipBaseImage = "true";
+              htmlEl.style.display = "none";
+              htmlEl.style.visibility = "hidden";
+              htmlEl.style.opacity = "0";
+            });
+        });
       };
 
       let pageIndex = 0;
@@ -1330,13 +1862,20 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         const { page, grid } = makePage(pageIndex === 0);
 
         let rowsAdded = 0;
+        let pageWasCompacted = false;
+        let productsAddedOnPage = 0;
 
         while (rowIndex < rows.length) {
           if (rowsAdded >= PDF_ROWS_PER_PAGE) break;
+          if (productsAddedOnPage >= PDF_PRODUCTS_PER_PAGE) break;
 
           const currentRow = rows[rowIndex];
+          const remainingSlots = PDF_PRODUCTS_PER_PAGE - productsAddedOnPage;
+          const rowCardsForPage = currentRow.cards.slice(0, remainingSlots);
+          const leftoverRowCards = currentRow.cards.slice(remainingSlots);
+          if (rowCardsForPage.length <= 0) break;
 
-          const rowClones: HTMLElement[] = currentRow.cards.map((card) => {
+          const rowClones: HTMLElement[] = rowCardsForPage.map((card) => {
             const clonedCard = card.cloneNode(true) as HTMLElement;
             styleProductCardForPdf(clonedCard);
             return clonedCard;
@@ -1352,6 +1891,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           if (currentHeight > pageHeightCssPx && rowsAdded > 0) {
             const fitted = await compactPageToFit(page, grid, pageHeightCssPx);
             currentHeight = getPdfContentHeight(page, grid);
+            pageWasCompacted = true;
 
             if (!fitted || currentHeight > pageHeightCssPx) {
               rowClones.forEach((clonedCard) => clonedCard.remove());
@@ -1360,6 +1900,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           }
 
           rowsAdded++;
+          productsAddedOnPage += rowCardsForPage.length;
+
+          if (leftoverRowCards.length > 0) {
+            rows[rowIndex] = { ...currentRow, cards: leftoverRowCards };
+            break;
+          }
+
           rowIndex++;
         }
 
@@ -1367,6 +1914,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         collapseGridParents(page);
 
         await waitMs(isIOS ? 200 : 50);
+        if (!pageWasCompacted) {
+          await expandPageToUseSpace(page, grid, pageHeightCssPx);
+        }
 
         const contentHeightCssPx = Math.min(
           pageHeightCssPx,
@@ -1383,6 +1933,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           `Renderizando página ${pageIndex + 1}...`
         );
 
+        const productImageAreas = await collectProductImageAreas(page);
+        hideProductImagesForBaseCapture(page, productImageAreas);
         const pageCanvas = await renderDomPageCanvas(page, contentHeightCssPx);
 
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
@@ -1412,6 +1964,36 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           undefined,
           "FAST"
         );
+
+        for (const imageArea of productImageAreas) {
+          try {
+            const naturalW = imageArea.naturalWidth || 1;
+            const naturalH = imageArea.naturalHeight || 1;
+            const areaWmm = imageArea.width / cssPxPerMm;
+            const areaHmm = imageArea.height / cssPxPerMm;
+            const imageRatio = naturalW / naturalH;
+            const areaRatio = areaWmm / areaHmm;
+            const drawWmm = imageRatio > areaRatio ? areaWmm : areaHmm * imageRatio;
+            const drawHmm = imageRatio > areaRatio ? areaWmm / imageRatio : areaHmm;
+            const drawXmm =
+              PDF_MARGIN_MM + imageArea.left / cssPxPerMm + (areaWmm - drawWmm) / 2;
+            const drawYmm =
+              pageYmm + imageArea.top / cssPxPerMm + (areaHmm - drawHmm) / 2;
+
+            pdf.addImage(
+              imageArea.src,
+              getImageFormatForPdf(imageArea.src),
+              drawXmm,
+              drawYmm,
+              drawWmm,
+              drawHmm,
+              undefined,
+              "FAST"
+            );
+          } catch (error) {
+            console.warn("No se pudo superponer imagen de producto en PDF:", error);
+          }
+        }
 
         addPdfWatermark();
 

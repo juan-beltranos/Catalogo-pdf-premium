@@ -25,30 +25,31 @@ export const getProductCardTheme = (
     return {
       card: `
         group product-pdf relative flex flex-col overflow-hidden
-        rounded-[1.6rem] border-2 border-slate-200 bg-white
-        transition-all duration-300
+        rounded-[1.35rem] border border-slate-200 bg-white
+        shadow-[0_16px_40px_rgba(15,23,42,0.08)]
+        transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(15,23,42,0.12)]
       `,
       mediaWrap: `
-        relative px-4 pt-4
+        relative bg-slate-50 p-3
       `,
       mediaInner: `
         product-media relative aspect-[4/3] w-full overflow-hidden
-        rounded-[1.3rem] 
-        flex items-center justify-center
+        rounded-[1.05rem] bg-white
+        flex items-center justify-center ring-1 ring-slate-100
       `,
       image: `
   relative z-[2]
   w-full h-full object-contain mx-auto block
       `,
       featuredBadge: `
-        absolute top-3 right-3 z-10 w-10 h-10 rounded-xl
-        flex items-center justify-center text-white
+        absolute top-3 right-3 z-10 w-9 h-9 rounded-full
+        flex items-center justify-center text-white shadow-lg
       `,
       categoryBadge: `
   absolute top-3 left-3 z-10 max-w-[62%] truncate
-  inline-flex items-center justify-center h-7 px-3 py-0 rounded-full
+  inline-flex items-center justify-center h-7 px-3 py-0 rounded-full shadow-sm
   text-[10px] leading-none font-extrabold
-  uppercase tracking-[0.14em]
+  uppercase tracking-[0.10em]
   text-white
       `,
       stockBadge: `
@@ -57,28 +58,28 @@ export const getProductCardTheme = (
         bg-white text-emerald-700 border-emerald-300
       `,
       priceInline: `
-        inline-flex items-center justify-center h-10 rounded-full px-4
-        text-[15px] leading-none font-extrabold text-white
+        inline-flex items-center justify-center h-9 rounded-lg px-3
+        text-[14px] leading-none font-extrabold text-white shadow-sm
       `,
       body: `
-        relative px-5 pb-5 pt-5
+        relative px-5 pb-5 pt-4
       `,
       title: `
-        text-[20px] leading-[1.02] font-extrabold tracking-[-0.04em] text-slate-900
+        text-[19px] leading-[1.12] font-extrabold text-slate-950
       `,
       description: `
-        mt-3 text-[14px] leading-5 text-slate-500
+        mt-2 text-[13px] leading-[1.55] text-slate-500
       `,
       actionHintWrap: `
         mt-4 flex items-center justify-center
       `,
       actionHint: `
-        px-4 h-10 inline-flex items-center justify-center rounded-full
-        text-[11px] font-extrabold uppercase tracking-[0.08em]
-        border border-slate-300 text-slate-900 bg-white
+        px-4 h-9 inline-flex items-center justify-center rounded-lg
+        text-[10px] font-extrabold uppercase tracking-[0.08em]
+        border border-slate-200 text-slate-800 bg-slate-50
       `,
       footerLine: `
-        mt-4 h-[4px] w-16 rounded-full
+        mt-4 h-[3px] w-14 rounded-full
       `,
     };
   }
@@ -87,16 +88,17 @@ export const getProductCardTheme = (
     return {
       card: `
         group product-pdf relative flex flex-col overflow-hidden
-        rounded-[1.1rem] border-2 border-stone-300 bg-[#fffdf9]
+        rounded-[0.95rem] border border-slate-200 bg-white
+        shadow-[0_10px_30px_rgba(15,23,42,0.06)]
         transition-all duration-300
       `,
       mediaWrap: `
-        relative px-5 pt-5
+        relative px-4 pt-4
       `,
       mediaInner: `
         product-media relative aspect-[4/3] w-full overflow-hidden
-        rounded-[0.85rem] 
-        flex items-center justify-center
+        rounded-[0.75rem] bg-stone-50
+        flex items-center justify-center border border-stone-100
       `,
       image: `
         w-full h-full object-contain mx-auto block
@@ -118,25 +120,25 @@ export const getProductCardTheme = (
         bg-white text-stone-700 border-stone-300
       `,
       priceInline: `
-        inline-flex items-center justify-center h-9 rounded-md px-4
+        inline-flex items-center justify-center h-9 rounded-sm px-4
         text-[14px] leading-none font-bold text-white
       `,
       body: `
         relative px-5 pb-5 pt-4 text-center
       `,
       title: `
-        text-[20px] leading-[1.15] font-bold font-serif tracking-[0.01em] text-stone-900
+        text-[19px] leading-[1.18] font-bold font-serif text-stone-950
       `,
       description: `
-        mt-3 text-[14px] leading-5 text-stone-500
+        mt-3 text-[13px] leading-[1.6] text-stone-500
       `,
       actionHintWrap: `
         mt-4 flex items-center justify-center
       `,
       actionHint: `
-        px-4 h-10 inline-flex items-center justify-center rounded-full
+        px-4 h-9 inline-flex items-center justify-center rounded-full
         text-[11px] font-extrabold uppercase tracking-[0.08em]
-        border border-slate-300 text-slate-900 bg-white
+        border border-stone-300 text-stone-900 bg-white
       `,
       footerLine: `
         mt-4 mx-auto h-[2px] w-20 rounded-full bg-stone-300
@@ -147,16 +149,17 @@ export const getProductCardTheme = (
   return {
     card: `
       group product-pdf relative flex flex-col overflow-hidden
-      rounded-[1.4rem] border-2 border-slate-200 bg-white
+      rounded-xl border border-slate-200 bg-white
+      shadow-[0_8px_24px_rgba(15,23,42,0.05)]
       transition-all duration-300
     `,
     mediaWrap: `
-      relative p-4
+      relative p-3 pb-2
     `,
     mediaInner: `
       product-media relative aspect-[4/3] w-full overflow-hidden
-      rounded-[1.1rem]
-      flex items-center justify-center
+      rounded-lg bg-white
+      flex items-center justify-center border border-slate-100
     `,
     image: `
   relative z-[2]
@@ -179,26 +182,25 @@ absolute top-3 left-3 z-10 max-w-[62%] truncate
       bg-white text-emerald-700 border-emerald-300
     `,
     priceInline: `
-      inline-flex items-center justify-center h-9 rounded-full px-4
-      text-[15px] leading-none font-extrabold text-white
+      inline-flex items-center justify-center h-8 rounded-md px-3
+      text-[14px] leading-none font-extrabold text-white
     `,
     body: `
-      relative px-4 pb-4 pt-2
+      relative px-4 pb-4 pt-3
     `,
     title: `
-      mt-1 text-[17px] leading-[1.15] font-extrabold
-      tracking-[-0.02em] text-slate-900
+      text-[17px] leading-[1.2] font-extrabold text-slate-950
     `,
     description: `
-      mt-2 text-[14px] leading-[1.5] text-slate-500
+      mt-2 text-[13px] leading-[1.55] text-slate-500
     `,
     actionHintWrap: `
       mt-4 flex items-center justify-center
     `,
     actionHint: `
-      px-4 h-10 inline-flex items-center justify-center rounded-full
+      px-4 h-9 inline-flex items-center justify-center rounded-md
       text-[11px] font-extrabold uppercase tracking-[0.08em]
-      border border-slate-300 text-slate-900 bg-white
+      border border-slate-200 text-slate-800 bg-slate-50
     `,
     footerLine: `
       mt-4 h-[3px] w-14 rounded-full

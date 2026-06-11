@@ -9,9 +9,9 @@ interface TemplateOption {
 }
 
 const templates: TemplateOption[] = [
-  { id: 'minimalist', name: 'Minimalista', description: 'Limpio y espacioso.' },
-  { id: 'classic', name: 'Clásico', description: 'Elegante y estructurado.' },
-  { id: 'modern', name: 'Moderno', description: 'Audaz y dinámico.' },
+  { id: 'minimalist', name: 'Editorial', description: 'Claro, versatil y muy legible.' },
+  { id: 'classic', name: 'Boutique', description: 'Elegante, sobrio y premium.' },
+  { id: 'modern', name: 'Showcase', description: 'Visual, actual y comercial.' },
 ];
 
 const pdfLayoutOptions = [

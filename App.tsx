@@ -188,6 +188,7 @@ export const App: React.FC = () => {
                   storeInfo={storeInfo}
                   products={products}
                   previewRef={previewRef}
+                  pdfProductsPerPage={(storeInfo as any).pdfProductsPerPage ?? 4}
                 />
               </div>
             </motion.div>

@@ -59,6 +59,20 @@ export async function getImageUrl(imageId: string): Promise<string | null> {
     return URL.createObjectURL(blob);
 }
 
+export async function getImageBlob(imageId: string): Promise<Blob | null> {
+    const db = await openDB();
+
+    const blob = await new Promise<Blob | null>((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).get(imageId);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => reject(req.error);
+    });
+
+    db.close();
+    return blob;
+}
+
 export async function deleteImage(imageId: string) {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {
