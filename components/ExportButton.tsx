@@ -1716,10 +1716,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               label: "html2canvas iOS minimo",
               run: () => captureIos(buildIosOptions(0.46, 1200, true), 18000),
             },
-            {
-              label: "dom-to-image iOS",
-              run: captureWithDomToImage,
-            },
           ];
 
           let lastError: unknown = null;
@@ -1892,7 +1888,15 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             const pdfImage = await resolveProductPdfImageSrc(product);
             if (!pdfImage.src) return null;
 
-            const mediaRectRaw = media.getBoundingClientRect();
+            const imgEl = card.querySelector("img") as HTMLImageElement | null;
+            const imgRectRaw =
+              imgEl && isElementVisibleForPdf(imgEl)
+                ? imgEl.getBoundingClientRect()
+                : null;
+            const mediaRectRaw =
+              imgRectRaw && imgRectRaw.width >= 12 && imgRectRaw.height >= 12
+                ? imgRectRaw
+                : media.getBoundingClientRect();
             const mediaRect = {
               left: mediaRectRaw.left,
               top: mediaRectRaw.top,
@@ -2090,7 +2094,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         );
 
         const productImageAreas = await collectProductImageAreas(page);
-        const shouldCaptureProductImagesInDom = isMobile && pageIndex === 0;
+        const shouldCaptureProductImagesInDom = isMobile && !isIOS && pageIndex === 0;
         let productImageOverlayAreas = shouldCaptureProductImagesInDom ? [] : productImageAreas;
 
         if (shouldCaptureProductImagesInDom) {
