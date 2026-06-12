@@ -1696,28 +1696,48 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             },
           });
 
-          const captureIos = (options: Parameters<typeof html2canvas>[1]) =>
+          const captureIos = (options: Parameters<typeof html2canvas>[1], timeoutMs = 22000) =>
             withTimeout(
               html2canvas(pageEl, options),
-              18000,
+              timeoutMs,
               "Tiempo agotado renderizando la pagina"
             );
 
-          try {
-            return await captureIos(buildIosOptions(canvasScale, 5000, false));
-          } catch (error) {
-            console.warn("Reintentando captura PDF en iOS con dom-to-image:", error);
-            updateProgress(77, "Reintentando renderizado en iOS...");
-            await waitMs(350);
+          const attempts: Array<{ label: string; run: () => Promise<HTMLCanvasElement> }> = [
+            {
+              label: "html2canvas iOS base",
+              run: () => captureIos(buildIosOptions(Math.min(canvasScale, 0.72), 5000, false)),
+            },
+            {
+              label: "html2canvas iOS ligero",
+              run: () => captureIos(buildIosOptions(0.58, 2500, false)),
+            },
+            {
+              label: "html2canvas iOS minimo",
+              run: () => captureIos(buildIosOptions(0.46, 1200, true), 18000),
+            },
+            {
+              label: "dom-to-image iOS",
+              run: captureWithDomToImage,
+            },
+          ];
 
+          let lastError: unknown = null;
+          for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex++) {
             try {
-              return await captureWithDomToImage();
-            } catch (retryError) {
-              console.warn("Ultimo reintento de captura PDF en iOS:", retryError);
-              await waitMs(350);
-              return await captureIos(buildIosOptions(0.7, 1800, true));
+              if (attemptIndex > 0) {
+                updateProgress(77, "Reintentando renderizado en iOS...");
+                await waitMs(450);
+              }
+
+              return await attempts[attemptIndex].run();
+            } catch (error) {
+              lastError = error;
+              console.warn(`Fallo ${attempts[attemptIndex].label}:`, error);
             }
           }
+
+          throw lastError || new Error("No se pudo renderizar la pagina en iOS");
         }
 
         return await html2canvas(pageEl, {
@@ -2071,7 +2091,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         const productImageAreas = await collectProductImageAreas(page);
         const shouldCaptureProductImagesInDom = isMobile && pageIndex === 0;
-        const productImageOverlayAreas = shouldCaptureProductImagesInDom ? [] : productImageAreas;
+        let productImageOverlayAreas = shouldCaptureProductImagesInDom ? [] : productImageAreas;
 
         if (shouldCaptureProductImagesInDom) {
           await inlineProductImagesForBaseCapture(page, productImageAreas);
@@ -2079,7 +2099,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           hideProductImagesForBaseCapture(page, productImageAreas);
         }
 
-        const pageCanvas = await renderDomPageCanvas(page, contentHeightCssPx);
+        let pageCanvas: HTMLCanvasElement;
+        try {
+          pageCanvas = await renderDomPageCanvas(page, contentHeightCssPx);
+        } catch (error) {
+          if (!isIOS || !shouldCaptureProductImagesInDom) throw error;
+
+          console.warn("Reintentando primera pagina iOS con imagenes optimizadas:", error);
+          updateProgress(78, "Optimizando primera pagina en iOS...");
+          productImageOverlayAreas = productImageAreas;
+          hideProductImagesForBaseCapture(page, productImageAreas);
+          await waitMs(500);
+          pageCanvas = await renderDomPageCanvas(page, contentHeightCssPx);
+        }
 
         const imgData = pageCanvas.toDataURL("image/jpeg", jpegQuality);
         const pageHmm = Math.min(
