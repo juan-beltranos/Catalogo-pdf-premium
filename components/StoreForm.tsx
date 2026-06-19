@@ -305,6 +305,19 @@ export const StoreForm: React.FC<StoreFormProps> = ({ storeInfo, onUpdate }) => 
           </label>
         </div>
 
+        <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+          <input
+            id="showWatermarkInPdf"
+            type="checkbox"
+            checked={!!storeInfo.showWatermarkInPdf}
+            onChange={(e) => onUpdate({ showWatermarkInPdf: e.target.checked })}
+            className="w-4 h-4 text-blue-600"
+          />
+          <label htmlFor="showWatermarkInPdf" className="text-sm text-slate-700 font-medium">
+            Mostrar marca de agua con mi logo en el PDF
+          </label>
+        </div>
+
       </div>
     </div>
   );

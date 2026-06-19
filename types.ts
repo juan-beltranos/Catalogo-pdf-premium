@@ -28,6 +28,7 @@ export interface StoreInfo {
   logo?: string;
   templateId: TemplateId;
   showQuantityInPdf?: boolean;
+  showWatermarkInPdf?: boolean;
   imageFit?: ImageFit;
   headerMode?: 'color' | 'image';
   headerImage?: string;

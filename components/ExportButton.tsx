@@ -15,6 +15,7 @@ interface ExportButtonProps {
   businessWhatsapp: string;
   pdfProductsPerPage?: number;
   coverImage?: StoreInfo["coverImage"];
+  showWatermarkInPdf?: boolean;
 }
 
 export const ExportButton: React.FC<ExportButtonProps> = ({
@@ -24,6 +25,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   businessWhatsapp,
   pdfProductsPerPage = 4,
   coverImage,
+  showWatermarkInPdf = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
@@ -1219,7 +1221,40 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         );
       };
 
-      const watermarkLogoSrc = getWatermarkLogoSrc();
+      const watermarkLogoSrc = showWatermarkInPdf
+        ? getWatermarkLogoSrc()
+        : "";
+
+      // La marca se compone dentro de la captura HTML, no como una capa final
+      // de jsPDF. Así las tarjetas, textos e imágenes de producto siempre se
+      // dibujan encima, incluso en visores de PDF que manejan distinto la
+      // transparencia de las imágenes.
+      const createWatermarkBackground = async (): Promise<string> => {
+        if (!watermarkLogoSrc) return "";
+
+        try {
+          const image = await loadPdfImage(watermarkLogoSrc);
+          const naturalWidth = image.naturalWidth || image.width || 1;
+          const naturalHeight = image.naturalHeight || image.height || 1;
+          const maxSide = 720;
+          const scale = Math.min(1, maxSide / Math.max(naturalWidth, naturalHeight));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(naturalHeight * scale));
+
+          const context = canvas.getContext("2d");
+          if (!context) return "";
+
+          context.globalAlpha = 0.055;
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL("image/png");
+        } catch (error) {
+          console.warn("No se pudo preparar la marca de agua:", error);
+          return "";
+        }
+      };
+
+      const watermarkBackgroundSrc = await createWatermarkBackground();
 
       const getImageFormatForPdf = (src: string): "PNG" | "JPEG" | "WEBP" => {
         const value = src.toLowerCase();
@@ -1293,40 +1328,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           console.warn("No se pudo agregar la portada personalizada:", err);
         }
       }
-
-      const addPdfWatermark = () => {
-        if (!watermarkLogoSrc) return;
-
-        try {
-          const watermarkWidth = usableWmm * 0.62;
-          const watermarkHeight = watermarkWidth;
-          const x = (pageW - watermarkWidth) / 2;
-          const y = (pageH - watermarkHeight) / 2;
-          const pdfAny = pdf as any;
-
-          if (pdfAny.setGState && pdfAny.GState) {
-            pdfAny.setGState(new pdfAny.GState({ opacity: 0.075 }));
-          }
-
-          pdf.addImage(
-            watermarkLogoSrc,
-            getImageFormatForPdf(watermarkLogoSrc),
-            x,
-            y,
-            watermarkWidth,
-            watermarkHeight,
-            undefined,
-            "FAST",
-            -14,
-          );
-
-          if (pdfAny.setGState && pdfAny.GState) {
-            pdfAny.setGState(new pdfAny.GState({ opacity: 1 }));
-          }
-        } catch (err) {
-          console.warn("No se pudo agregar la marca de agua al PDF:", err);
-        }
-      };
 
       const cssPxPerMm = EXPORT_WIDTH_PX / usableWmm;
       const pageHeightCssPx = Math.floor(usableHmm * cssPxPerMm) - 6;
@@ -1755,7 +1756,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         page.style.top = "0";
         page.style.width = `${EXPORT_WIDTH_PX}px`;
         page.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
-        page.style.background = "#ffffff";
+        page.style.backgroundColor = "#ffffff";
+        if (watermarkBackgroundSrc) {
+          page.style.backgroundImage = `url("${watermarkBackgroundSrc}")`;
+          page.style.backgroundRepeat = "no-repeat";
+          page.style.backgroundPosition = "center center";
+          page.style.backgroundSize = "62% auto";
+        }
         page.style.boxSizing = "border-box";
         page.style.margin = "0";
         page.style.transform = "none";
@@ -1824,7 +1831,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                   minHeight: "0",
                   maxHeight: `${captureHeightCssPx}px`,
                   overflow: "hidden",
-                  background: "#ffffff",
+                  backgroundColor: "#ffffff",
                   transform: "none",
                   WebkitTransform: "none",
                 },
@@ -1835,7 +1842,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
                 onclone: (clonedEl: HTMLElement) => {
                   clonedEl.style.visibility = "visible";
                   clonedEl.style.opacity = "1";
-                  clonedEl.style.background = "#ffffff";
+                  clonedEl.style.backgroundColor = "#ffffff";
                   clonedEl.style.width = `${EXPORT_WIDTH_PX}px`;
                   clonedEl.style.height = `${captureHeightCssPx}px`;
                   clonedEl.style.maxHeight = `${captureHeightCssPx}px`;
@@ -1871,7 +1878,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             onclone: (_clonedDoc, clonedEl) => {
               clonedEl.style.visibility = "visible";
               clonedEl.style.opacity = "1";
-              clonedEl.style.background = "#ffffff";
+              clonedEl.style.backgroundColor = "#ffffff";
               prepareIosCaptureRoot(clonedEl as HTMLElement);
 
               Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
@@ -1972,7 +1979,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           onclone: (_clonedDoc, clonedEl) => {
             clonedEl.style.visibility = "visible";
             clonedEl.style.opacity = "1";
-            clonedEl.style.background = "#ffffff";
+            clonedEl.style.backgroundColor = "#ffffff";
 
             Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
               const htmlEl = el as HTMLElement;
@@ -2453,8 +2460,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             );
           }
         }
-
-        addPdfWatermark();
 
         const pageLinkAreas = collectPageLinks(page);
         for (const la of pageLinkAreas) {

@@ -232,6 +232,7 @@ export const App: React.FC = () => {
           businessWhatsapp={storeInfo.whatsapp || ''}
           pdfProductsPerPage={(storeInfo as any).pdfProductsPerPage ?? 4}
           coverImage={storeInfo.coverImage}
+          showWatermarkInPdf={!!storeInfo.showWatermarkInPdf}
         />
       )}
     </div>
