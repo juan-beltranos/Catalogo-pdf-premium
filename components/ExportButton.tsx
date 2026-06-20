@@ -16,6 +16,7 @@ interface ExportButtonProps {
   pdfProductsPerPage?: number;
   coverImage?: StoreInfo["coverImage"];
   showWatermarkInPdf?: boolean;
+  watermarkLogo?: StoreInfo["logo"];
 }
 
 export const ExportButton: React.FC<ExportButtonProps> = ({
@@ -26,6 +27,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   pdfProductsPerPage = 4,
   coverImage,
   showWatermarkInPdf = false,
+  watermarkLogo,
 }) => {
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
@@ -248,58 +250,16 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       return null;
     };
 
-    const flattenProductCardForPdf = (card: HTMLElement) => {
-      card.style.background = "#ffffff";
-      card.style.backgroundColor = "#ffffff";
-      card.style.border = "0";
-      card.style.boxShadow = "none";
-      card.style.filter = "none";
-      card.style.outline = "none";
-
-      (
-        Array.from(
-          card.querySelectorAll(
-            ".product-media, [data-product-media='true'], [data-product-image-wrap='true']",
-          ),
-        ) as HTMLElement[]
-      ).forEach((el) => {
-        el.style.background = "#ffffff";
-        el.style.backgroundColor = "#ffffff";
-        el.style.border = "0";
-        el.style.boxShadow = "none";
-        el.style.outline = "none";
-      });
-
-      (
-        Array.from(
-          card.querySelectorAll(
-            "[data-action-hint='true'], [data-price-inline='true'], [data-stock-badge='true'], [data-category-badge='true']",
-          ),
-        ) as HTMLElement[]
-      ).forEach((el) => {
-        el.style.boxShadow = "none";
-        el.style.outline = "none";
-        el.style.border = "0";
-      });
-
-      (Array.from(card.children) as HTMLElement[]).forEach((child) => {
-        child.style.background = "#ffffff";
-        child.style.backgroundColor = "#ffffff";
-        child.style.boxShadow = "none";
-        child.style.outline = "none";
-      });
-    };
-
     const getPdfTextSizes = (productsPerPage: number) => {
       if (productsPerPage <= 1)
         return { title: 38, description: 31, price: 22, badge: 17, action: 17 };
       if (productsPerPage <= 2)
         return { title: 32, description: 20, price: 20, badge: 16, action: 16 };
       if (productsPerPage <= 4)
-        return { title: 26, description: 16, price: 18, badge: 15, action: 15 };
+        return { title: 28, description: 18, price: 18, badge: 15, action: 15 };
       if (productsPerPage <= 6)
-        return { title: 20, description: 13, price: 15, badge: 12, action: 13 };
-      return { title: 16, description: 11, price: 13, badge: 11, action: 11 };
+        return { title: 23, description: 16, price: 16, badge: 13, action: 13 };
+      return { title: 18, description: 13, price: 14, badge: 12, action: 12 };
     };
 
     const PDF_TEXT = getPdfTextSizes(PDF_PRODUCTS_PER_PAGE);
@@ -313,8 +273,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         ? 1.6
         : 1.25;
 
+    // En iPhone la compresión baja hacía que bordes finos y texto generaran
+    // artefactos grises. El tamaño de cada página ya está acotado, así que se
+    // puede conservar una calidad equivalente a escritorio.
     const jpegQuality =
-      resolvedQuality === "alta" ? (isIOS ? 0.76 : 0.88) : isIOS ? 0.62 : 0.76;
+      resolvedQuality === "alta" ? 0.88 : isIOS ? 0.82 : 0.76;
 
     const encodeWaText = (t: string) => encodeURIComponent(t);
 
@@ -586,6 +549,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         (el as HTMLElement).style.display = "none";
       });
 
+      // La capa del preview se sustituye por el dibujo directo en canvas.
+      clone.querySelectorAll('[data-preview-watermark="true"]').forEach((el) => {
+        (el as HTMLElement).style.display = "none";
+      });
+
       if (opts?.category) {
         updateProgress(9, "Filtrando categoría seleccionada...");
 
@@ -756,7 +724,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       (
         Array.from(clone.querySelectorAll(".product-pdf")) as HTMLElement[]
       ).forEach((card) => {
-        flattenProductCardForPdf(card);
+        // Conservamos bordes, espaciado y jerarquía del preview. Antes se
+        // eliminaban los estilos de la tarjeta y el PDF terminaba siendo otro diseño.
+        card.style.backgroundColor = "#ffffff";
         card.style.overflow = "hidden";
       });
 
@@ -1222,39 +1192,105 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
       };
 
       const watermarkLogoSrc = showWatermarkInPdf
-        ? getWatermarkLogoSrc()
+        ? watermarkLogo || getWatermarkLogoSrc()
         : "";
 
       // La marca se compone dentro de la captura HTML, no como una capa final
       // de jsPDF. Así las tarjetas, textos e imágenes de producto siempre se
       // dibujan encima, incluso en visores de PDF que manejan distinto la
       // transparencia de las imágenes.
-      const createWatermarkBackground = async (): Promise<string> => {
-        if (!watermarkLogoSrc) return "";
+      // html2canvas y dom-to-image no siempre incluyen background-image con
+      // data URLs. Dibujamos el logo sobre el canvas final para garantizar la
+      // marca de agua en cada página exportada.
+      const watermarkImage = watermarkLogoSrc
+        ? await loadPdfImage(watermarkLogoSrc).catch(() => null)
+        : null;
 
-        try {
-          const image = await loadPdfImage(watermarkLogoSrc);
-          const naturalWidth = image.naturalWidth || image.width || 1;
-          const naturalHeight = image.naturalHeight || image.height || 1;
-          const maxSide = 720;
-          const scale = Math.min(1, maxSide / Math.max(naturalWidth, naturalHeight));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, Math.round(naturalWidth * scale));
-          canvas.height = Math.max(1, Math.round(naturalHeight * scale));
+      // En iOS el canvas de captura puede perder la composición alpha al pasar
+      // a JPEG. Esta versión PNG se inserta como capa del PDF, garantizando
+      // que la marca aparezca también en Safari/iPhone.
+      const watermarkPdfSrc = (() => {
+        if (!watermarkImage) return "";
 
-          const context = canvas.getContext("2d");
-          if (!context) return "";
+        const width = Math.max(1, watermarkImage.naturalWidth || watermarkImage.width);
+        const height = Math.max(1, watermarkImage.naturalHeight || watermarkImage.height);
+        const maxSide = 720;
+        const scale = Math.min(1, maxSide / Math.max(width, height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        const context = canvas.getContext("2d");
+        if (!context) return "";
 
-          context.globalAlpha = 0.055;
-          context.drawImage(image, 0, 0, canvas.width, canvas.height);
-          return canvas.toDataURL("image/png");
-        } catch (error) {
-          console.warn("No se pudo preparar la marca de agua:", error);
-          return "";
-        }
+        context.globalAlpha = 0.12;
+        context.drawImage(watermarkImage, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/png");
+      })();
+
+      const addWatermarkToPdf = (pageYmm: number, pageHmm: number) => {
+        if (!watermarkPdfSrc || !watermarkImage) return;
+
+        const sourceWidth = watermarkImage.naturalWidth || watermarkImage.width || 1;
+        const sourceHeight = watermarkImage.naturalHeight || watermarkImage.height || 1;
+        const scale = Math.min(
+          (usableWmm * 0.56) / sourceWidth,
+          (pageHmm * 0.42) / sourceHeight,
+        );
+        const width = Math.max(1, sourceWidth * scale);
+        const height = Math.max(1, sourceHeight * scale);
+
+        pdf.addImage(
+          watermarkPdfSrc,
+          "PNG",
+          (pageW - width) / 2,
+          pageYmm + (pageHmm - height) / 2,
+          width,
+          height,
+          undefined,
+          "FAST",
+        );
       };
 
-      const watermarkBackgroundSrc = await createWatermarkBackground();
+      const drawProductImagesOnCanvas = async (
+        canvas: HTMLCanvasElement,
+        imageAreas: ProductImageArea[],
+        captureHeightCssPx: number,
+      ) => {
+        if (imageAreas.length === 0) return;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+
+        const scaleX = canvas.width / EXPORT_WIDTH_PX;
+        const scaleY = canvas.height / Math.max(1, captureHeightCssPx);
+
+        await Promise.all(
+          imageAreas.map(async (area) => {
+            try {
+              const image = await loadPdfImage(area.src);
+              const sourceWidth = image.naturalWidth || image.width || 1;
+              const sourceHeight = image.naturalHeight || image.height || 1;
+              const targetWidth = area.width * scaleX;
+              const targetHeight = area.height * scaleY;
+              const containScale = Math.min(
+                targetWidth / sourceWidth,
+                targetHeight / sourceHeight,
+              );
+              const width = sourceWidth * containScale;
+              const height = sourceHeight * containScale;
+
+              context.drawImage(
+                image,
+                area.left * scaleX + (targetWidth - width) / 2,
+                area.top * scaleY + (targetHeight - height) / 2,
+                width,
+                height,
+              );
+            } catch (error) {
+              console.warn("No se pudo dibujar imagen de producto en canvas:", error);
+            }
+          }),
+        );
+      };
 
       const getImageFormatForPdf = (src: string): "PNG" | "JPEG" | "WEBP" => {
         const value = src.toLowerCase();
@@ -1364,7 +1400,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         card.style.maxHeight = "none";
         card.style.boxSizing = "border-box";
         card.style.overflow = "hidden";
-        flattenProductCardForPdf(card);
+        card.style.backgroundColor = "#ffffff";
 
         const mediaEls = getProductMediaEls(card);
         mediaEls.forEach((media) => {
@@ -1388,11 +1424,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             inner.style.alignItems = "center";
             inner.style.justifyContent = "center";
             inner.style.overflow = "hidden";
-            inner.style.background = "#ffffff";
-            inner.style.backgroundColor = "#ffffff";
-            inner.style.border = "0";
-            inner.style.boxShadow = "none";
-            inner.style.outline = "none";
           }
         });
 
@@ -1414,7 +1445,9 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         grid: HTMLElement,
         maxHeightPx: number,
       ) => {
-        const factors = [0.92, 0.84, 0.76, 0.68];
+        // Si el contenido no cabe, se crea otra página; no reducimos la
+        // tipografía hasta volverla ilegible.
+        const factors = [0.96, 0.92];
 
         for (const factor of factors) {
           getProductMediaEls(grid).forEach((media) => {
@@ -1436,7 +1469,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               grid.querySelectorAll(".product-pdf h3"),
             ) as HTMLElement[]
           ).forEach((el) => {
-            el.style.fontSize = `${Math.max(14, Math.round(PDF_TEXT.title * Math.max(0.78, factor)))}px`;
+            el.style.fontSize = `${Math.max(18, Math.round(PDF_TEXT.title * Math.max(0.9, factor)))}px`;
             el.style.lineHeight = "1.18";
           });
 
@@ -1446,10 +1479,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             ) as HTMLElement[]
           ).forEach((el) => {
             const nextSize = Math.max(
-              10,
-              Math.round(PDF_TEXT.description * Math.max(0.82, factor)),
+              13,
+              Math.round(PDF_TEXT.description * Math.max(0.9, factor)),
             );
-            el.style.fontSize = `${Math.min(nextSize, Math.max(10, PDF_TEXT.title - 4))}px`;
+            el.style.fontSize = `${Math.min(nextSize, Math.max(13, PDF_TEXT.title - 4))}px`;
             el.style.lineHeight = "1.35";
             (
               Array.from(
@@ -1473,7 +1506,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         const mediaFactor = Math.min(2.6, Math.max(0.68, factor));
         const textFactor = Math.min(
           1.32,
-          Math.max(0.78, 0.92 + (factor - 1) * 0.34),
+          Math.max(0.95, 0.92 + (factor - 1) * 0.34),
         );
         const gapFactor = Math.min(
           2.05,
@@ -1499,7 +1532,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         (
           Array.from(grid.querySelectorAll(".product-pdf h3")) as HTMLElement[]
         ).forEach((el) => {
-          el.style.fontSize = `${Math.max(14, Math.round(PDF_TEXT.title * textFactor))}px`;
+          el.style.fontSize = `${Math.max(18, Math.round(PDF_TEXT.title * textFactor))}px`;
           el.style.lineHeight = factor > 1 ? "1.2" : "1.18";
         });
 
@@ -1509,10 +1542,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           ) as HTMLElement[]
         ).forEach((el) => {
           const nextSize = Math.max(
-            10,
+            13,
             Math.round(PDF_TEXT.description * Math.min(1.18, textFactor)),
           );
-          el.style.fontSize = `${Math.min(nextSize, Math.max(10, Math.round(PDF_TEXT.title * textFactor) - 4))}px`;
+          el.style.fontSize = `${Math.min(nextSize, Math.max(13, Math.round(PDF_TEXT.title * textFactor) - 4))}px`;
           el.style.lineHeight = factor > 1 ? "1.48" : "1.35";
 
           (
@@ -1757,12 +1790,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         page.style.width = `${EXPORT_WIDTH_PX}px`;
         page.style.maxWidth = `${EXPORT_WIDTH_PX}px`;
         page.style.backgroundColor = "#ffffff";
-        if (watermarkBackgroundSrc) {
-          page.style.backgroundImage = `url("${watermarkBackgroundSrc}")`;
-          page.style.backgroundRepeat = "no-repeat";
-          page.style.backgroundPosition = "center center";
-          page.style.backgroundSize = "62% auto";
-        }
+        // La marca de agua se dibuja al terminar el canvas: es más compatible
+        // que usar un background-image durante la captura del DOM.
         page.style.boxSizing = "border-box";
         page.style.margin = "0";
         page.style.transform = "none";
@@ -1812,10 +1841,11 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         await waitMs(isIOS ? 150 : 50); // ── FIX iOS: dar tiempo al DOM antes de capturar
 
         if (isIOS) {
-          prepareIosCaptureRoot(pageEl);
-
           const captureWithDomToImage = async (scale = 0.58, timeoutMs = 16000) => {
             updateProgress(76, "Renderizando página en iOS...");
+            // dom-to-image es el plan B: necesita esta normalización, pero no
+            // debe alterar la primera captura, que busca igualar escritorio.
+            prepareIosCaptureRoot(pageEl);
             const dataUrl = await withTimeout(
               domtoimage.toJpeg(pageEl, {
                 width: EXPORT_WIDTH_PX,
@@ -1879,8 +1909,6 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               clonedEl.style.visibility = "visible";
               clonedEl.style.opacity = "1";
               clonedEl.style.backgroundColor = "#ffffff";
-              prepareIosCaptureRoot(clonedEl as HTMLElement);
-
               Array.from(clonedEl.querySelectorAll("*")).forEach((el) => {
                 const htmlEl = el as HTMLElement;
                 if (!htmlEl.style) return;
@@ -1914,23 +1942,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             run: () => Promise<HTMLCanvasElement>;
           }> = [
             {
-              label: "dom-to-image iOS ligero",
-              run: () => captureWithDomToImage(0.58, 16000),
-            },
-            {
-              label: "dom-to-image iOS minimo",
-              run: () => captureWithDomToImage(0.46, 14000),
-            },
-            {
-              label: "html2canvas iOS base",
+              label: "html2canvas iOS alta fidelidad",
               run: () =>
                 captureIos(
-                  buildIosOptions(Math.min(canvasScale, 0.58), 3500, false),
+                  buildIosOptions(canvasScale, 6000, false),
                 ),
             },
             {
               label: "html2canvas iOS ligero",
-              run: () => captureIos(buildIosOptions(0.46, 1800, false), 18000),
+              run: () => captureIos(buildIosOptions(0.78, 3500, false), 18000),
+            },
+            {
+              label: "dom-to-image iOS respaldo",
+              run: () => captureWithDomToImage(0.82, 16000),
             },
             {
               label: "html2canvas iOS minimo",
@@ -2124,17 +2148,10 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
               const pdfImage = await resolveProductPdfImageSrc(product);
               if (!pdfImage.src) return null;
 
-              const imgEl = card.querySelector(
-                "img",
-              ) as HTMLImageElement | null;
-              const imgRectRaw =
-                imgEl && isElementVisibleForPdf(imgEl)
-                  ? imgEl.getBoundingClientRect()
-                  : null;
-              const mediaRectRaw =
-                imgRectRaw && imgRectRaw.width >= 12 && imgRectRaw.height >= 12
-                  ? imgRectRaw
-                  : media.getBoundingClientRect();
+              // El contenedor conserva una posición estable aun cuando Safari
+              // termina de decodificar la imagen. Usar el rect del <img> era
+              // la causa del desplazamiento/desaparición en la primera página.
+              const mediaRectRaw = media.getBoundingClientRect();
               const mediaRect = {
                 left: mediaRectRaw.left,
                 top: mediaRectRaw.top,
@@ -2244,12 +2261,26 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         (
           Array.from(page.querySelectorAll(".product-pdf")) as HTMLElement[]
-        ).forEach((card) => {
-          const productId = String(card.dataset.productId || "");
-          const src = imageByProductId.get(productId);
-          if (!src) return;
+          ).forEach((card) => {
+            const productId = String(card.dataset.productId || "");
+            const src = imageByProductId.get(productId);
+            if (!src) return;
 
-          (
+            // Safari captura de forma más fiable una imagen data URL como
+            // fondo del contenedor que como <img> dentro de un grid muy denso.
+            // Solo se usa para la primera página móvil, donde se integra en el
+            // canvas y evita cualquier cálculo de coordenadas posterior.
+            if (isMobile) {
+              const media = getPrimaryProductMediaEl(card);
+              if (media) {
+                media.style.backgroundImage = `url("${src}")`;
+                media.style.backgroundRepeat = "no-repeat";
+                media.style.backgroundPosition = "center";
+                media.style.backgroundSize = "contain";
+              }
+            }
+
+            (
             Array.from(card.querySelectorAll("img")) as HTMLImageElement[]
           ).forEach((img) => {
             img.removeAttribute("data-pdf-skip-base-image");
@@ -2262,10 +2293,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             img.style.width = "auto";
             img.style.height = "auto";
             img.style.maxWidth = "100%";
-            img.style.maxHeight = "100%";
-            img.style.objectFit = "contain";
-            img.style.objectPosition = "center";
-            img.style.margin = "0 auto";
+              img.style.maxHeight = "100%";
+              img.style.objectFit = "contain";
+              img.style.objectPosition = "center";
+              img.style.margin = "0 auto";
+              // Mantener el <img> visible: algunos navegadores móviles no
+              // rasterizan background-image data URL, pero sí este origen ya
+              // convertido a data URL.
+              img.style.opacity = "1";
           });
         });
 
@@ -2366,12 +2401,14 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
         updateProgress(
           75 + (pageIndex / Math.max(1, totalPagesEstimate)) * 20,
-          `Preparando imÃ¡genes de pÃ¡gina ${pageIndex + 1}...`,
+          `Preparando imágenes de página ${pageIndex + 1}...`,
         );
 
         const productImageAreas = await collectProductImageAreas(page);
-        const shouldCaptureProductImagesInDom =
-          isMobile && !isIOS && pageIndex === 0;
+        // La primera página se integra por completo en el canvas. En iPhone
+        // usamos el fondo data URL del contenedor para mantener las imágenes
+        // dentro de la tarjeta incluso con banner y 12 productos.
+        const shouldCaptureProductImagesInDom = isMobile && pageIndex === 0;
         let productImageOverlayAreas = shouldCaptureProductImagesInDom
           ? []
           : productImageAreas;
@@ -2399,6 +2436,18 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           pageCanvas = await renderDomPageCanvas(page, contentHeightCssPx);
         }
 
+        // Respaldo para la primera página móvil. Los navegadores móviles pueden
+        // omitir fotos del grid al capturar una página con banner; al
+        // componerlas en este canvas quedan exactamente en su contenedor.
+        if (isMobile && pageIndex === 0) {
+          await drawProductImagesOnCanvas(
+            pageCanvas,
+            productImageAreas,
+            contentHeightCssPx,
+          );
+          productImageOverlayAreas = [];
+        }
+
         const imgData = canvasToJpegDataUrl(pageCanvas, jpegQuality);
         const pageHmm = Math.min(usableHmm, contentHeightCssPx / cssPxPerMm);
 
@@ -2423,6 +2472,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           undefined,
           "FAST",
         );
+
+        addWatermarkToPdf(pageYmm, pageHmm);
 
         for (const imageArea of productImageOverlayAreas) {
           try {

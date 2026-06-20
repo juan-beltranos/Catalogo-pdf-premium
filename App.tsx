@@ -42,7 +42,7 @@ export const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className="bg-white p-2 rounded-lg text-white">
               <img
-                src="https://www.inteliasb.com/assets/logo-minimalista-CPqnFsHu.png"
+                src="https://www.inteliasb.com/assets/logo-intelia-B77psNHY.png"
                 alt="logo"
                 className="w-[48px] md:w-[45px]"
               />
@@ -233,6 +233,7 @@ export const App: React.FC = () => {
           pdfProductsPerPage={(storeInfo as any).pdfProductsPerPage ?? 4}
           coverImage={storeInfo.coverImage}
           showWatermarkInPdf={!!storeInfo.showWatermarkInPdf}
+          watermarkLogo={storeInfo.logo}
         />
       )}
     </div>

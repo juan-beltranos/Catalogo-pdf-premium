@@ -41,6 +41,29 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   const isClassic = templateId === "classic";
   const isModern = templateId === "modern";
 
+  const pageSurfaceClass = "bg-white text-slate-900";
+  const headerClass = storeInfo.headerMode === "image" && !!storeInfo.headerImage
+    ? "text-white border-b border-slate-200"
+    : isModern
+      ? "bg-white text-slate-900 border-b-2"
+      : isClassic
+        ? "bg-white text-stone-900 border-b border-stone-300"
+        : "bg-white text-slate-900 border-b border-slate-200";
+  const headerStyle = storeInfo.headerMode === "image" && !!storeInfo.headerImage
+    ? {
+        backgroundImage: `url(${storeInfo.headerImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }
+    : isModern
+      ? { borderColor: primaryColor }
+      : {};
+  const contentClass = "bg-white";
+  const footerClass = isClassic
+    ? "border-stone-200 bg-white"
+    : "border-slate-100 bg-white";
+
   const headerMode = storeInfo.headerMode ?? "color";
   const hasHeaderImage = headerMode === "image" && !!storeInfo.headerImage;
 
@@ -98,7 +121,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
     return `${value.slice(0, 167).trim()}...`;
   }, [storeInfo.additionalInfo]);
 
-  const previewPageClass = `bg-white w-full max-w-[800px] overflow-hidden text-slate-900 flex flex-col shadow-sm ${
+  const previewPageClass = `${pageSurfaceClass} w-full max-w-[800px] overflow-hidden flex flex-col shadow-sm relative ${
     isModern ? "rounded-[2rem]" : isMinimalist ? "rounded-none" : "rounded-lg"
   }`;
 
@@ -131,23 +154,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   const renderHeader = () => (
     <>
       <div
-        className={`px-4 py-6 md:p-10 relative overflow-hidden ${
-          isMinimalist
-            ? "bg-white text-slate-900 border-b border-slate-100"
-            : "text-white"
-        }`}
-        style={
-          hasHeaderImage
-            ? {
-                backgroundImage: `url(${storeInfo.headerImage})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                backgroundRepeat: "no-repeat",
-              }
-            : !isMinimalist
-              ? { backgroundColor: primaryColor }
-              : {}
-        }
+        className={`catalog-header px-4 py-6 md:p-10 relative overflow-hidden ${headerClass}`}
+        style={headerStyle}
       >
         {hasHeaderImage && <div className="absolute inset-0 bg-black/35 z-0" />}
         <div
@@ -183,7 +191,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                     ? "text-xl md:text-2xl text-white"
                     : "text-xl md:text-2xl text-slate-900"
                   : "text-2xl md:text-4xl"
-              } ${isClassic ? "font-serif tracking-[0.12em]" : ""}`}
+              } ${isClassic ? "font-serif tracking-[0.12em]" : ""} ${hasHeaderImage ? "text-white" : ""}`}
             >
               {storeInfo.name || "Mi CatÃ¡logo"}
             </h1>
@@ -194,7 +202,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
               storeInfo.facebook ||
               storeInfo.instagram) && (
               <div
-                className={`flex items-center gap-3 ${isMinimalist ? (hasHeaderImage ? "text-white" : "text-slate-600") : "text-white"}`}
+                className={`flex items-center gap-3 ${hasHeaderImage ? "text-white" : "text-slate-600"}`}
               >
                 {storeInfo.whatsapp && (
                   <a
@@ -248,7 +256,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                     ? hasHeaderImage
                       ? "bg-white/90 text-slate-900 border border-white/40"
                       : "bg-slate-100 text-slate-900 border border-slate-200"
-                    : "bg-white text-slate-900 border border-white/40"
+                    : "bg-white text-slate-900 border border-slate-200"
                 }`}
               >
                 <Phone className="w-4 h-4" />
@@ -281,7 +289,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
   const renderFooter = () => (
     <div
       data-pdf-footer="true"
-      className="catalog-footer mt-auto border-t border-slate-100 bg-white px-4 py-3 md:px-8 md:py-4"
+      className={`catalog-footer mt-auto border-t px-4 py-3 md:px-8 md:py-4 ${footerClass}`}
     >
       <div className="flex flex-col gap-2">
         {footerInfo && (
@@ -351,6 +359,24 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
       </div>
     </div>
   );
+
+  const renderWatermark = () => {
+    if (!storeInfo.showWatermarkInPdf || !storeInfo.logo) return null;
+
+    return (
+      <div
+        data-preview-watermark="true"
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center overflow-hidden"
+      >
+        <img
+          src={storeInfo.logo}
+          alt=""
+          className="max-h-[42%] max-w-[56%] object-contain opacity-[0.075]"
+        />
+      </div>
+    );
+  };
 
   const renderProductCard = (product: Product) => {
     const waLink = storeInfo.whatsapp ? buildWaLink(product) : "#";
@@ -519,9 +545,10 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
             ["--brand-color" as any]: storeInfo.color || "#f97316",
           }}
         >
+          {renderWatermark()}
           {pageIndex === 0 && renderHeader()}
 
-          <div className="px-4 py-6  md:pt-4 flex-grow bg-white">
+          <div className={`px-4 py-6 md:pt-4 flex-grow ${contentClass}`}>
             <div
               className={`products-grid grid grid-cols-1 ${previewGridColumns} ${
                 isMinimalist ? "gap-x-7 gap-y-8" : "gap-x-5 gap-y-6"
@@ -552,6 +579,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
           ["--brand-color" as any]: storeInfo.color || "#f97316",
         }}
       >
+        {renderWatermark()}
         <style>{`
   .product-pdf {
     break-inside: avoid;
@@ -677,23 +705,8 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 `}</style>
 
         <div
-          className={`px-4 py-6 md:p-10 relative overflow-hidden ${
-            isMinimalist
-              ? "bg-white text-slate-900 border-b border-slate-100"
-              : "text-white"
-          }`}
-          style={
-            hasHeaderImage
-              ? {
-                  backgroundImage: `url(${storeInfo.headerImage})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                  backgroundRepeat: "no-repeat",
-                }
-              : !isMinimalist
-                ? { backgroundColor: primaryColor }
-                : {}
-          }
+          className={`catalog-header px-4 py-6 md:p-10 relative overflow-hidden ${headerClass}`}
+          style={headerStyle}
         >
           {hasHeaderImage && (
             <div className="absolute inset-0 bg-black/35 z-0" />
@@ -736,7 +749,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                         ? "text-xl md:text-2xl text-white"
                         : "text-xl md:text-2xl text-slate-900"
                       : "text-2xl md:text-4xl"
-                  } ${isClassic ? "font-serif tracking-[0.12em]" : ""}`}
+                  } ${isClassic ? "font-serif tracking-[0.12em]" : ""} ${hasHeaderImage ? "text-white" : ""}`}
                 >
                   {storeInfo.name || "Mi Catálogo"}
                 </h1>
@@ -753,7 +766,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       ? hasHeaderImage
                         ? "text-white"
                         : "text-slate-600"
-                      : "text-white"
+                      : "text-slate-600"
                   }`}
                 >
                   {storeInfo.whatsapp && (
@@ -825,7 +838,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
                       ? hasHeaderImage
                         ? "bg-white/90 text-slate-900 border border-white/40"
                         : "bg-slate-100 text-slate-900 border border-slate-200"
-                      : "bg-white text-slate-900 border border-white/40"
+                      : "bg-white text-slate-900 border border-slate-200"
                   }`}
                 >
                   <Phone className="w-4 h-4" />
@@ -857,7 +870,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
           </div>
         )}
 
-        <div className="px-4 py-6  md:pt-4 flex-grow bg-white">
+        <div className={`px-4 py-6 md:pt-4 flex-grow ${contentClass}`}>
           <div
             className={`products-grid grid grid-cols-1 md:grid-cols-2 ${
               isMinimalist ? "gap-x-7 gap-y-8" : "gap-x-5 gap-y-6"
@@ -1025,7 +1038,7 @@ export const CatalogPreview: React.FC<CatalogPreviewProps> = ({
 
         <div
           data-pdf-footer="true"
-          className="catalog-footer mt-auto border-t border-slate-100 bg-white px-4 py-3 md:px-8 md:py-4"
+          className={`catalog-footer mt-auto border-t px-4 py-3 md:px-8 md:py-4 ${footerClass}`}
         >
           <div className="flex flex-col gap-2">
             {footerInfo && (

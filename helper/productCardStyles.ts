@@ -25,12 +25,12 @@ export const getProductCardTheme = (
     return {
       card: `
         group product-pdf relative flex flex-col overflow-hidden
-        rounded-[1.35rem] border border-slate-200 bg-white
-        shadow-[0_16px_40px_rgba(15,23,42,0.08)]
+        rounded-[1.5rem] border-2 border-slate-200 bg-white
+        shadow-[0_16px_38px_rgba(15,23,42,0.10)]
         transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(15,23,42,0.12)]
       `,
       mediaWrap: `
-        relative bg-slate-50 p-3
+        relative bg-white p-3
       `,
       mediaInner: `
         product-media relative aspect-[4/3] w-full overflow-hidden
@@ -46,7 +46,7 @@ export const getProductCardTheme = (
         flex items-center justify-center text-white shadow-lg
       `,
       categoryBadge: `
-  absolute top-3 left-3 z-10 max-w-[62%] truncate
+  absolute top-3 left-3 z-10 max-w-[90%] truncate
   inline-flex items-center justify-center h-7 px-3 py-0 rounded-full shadow-sm
   text-[10px] leading-none font-extrabold
   uppercase tracking-[0.10em]
@@ -62,7 +62,7 @@ export const getProductCardTheme = (
         text-[14px] leading-none font-extrabold text-white shadow-sm
       `,
       body: `
-        relative px-5 pb-5 pt-4
+        relative px-5 pb-5 pt-4 bg-white
       `,
       title: `
         text-[19px] leading-[1.12] font-extrabold text-slate-950
@@ -76,7 +76,7 @@ export const getProductCardTheme = (
       actionHint: `
         px-4 h-9 inline-flex items-center justify-center rounded-lg
         text-[10px] font-extrabold uppercase tracking-[0.08em]
-        border border-slate-200 text-slate-800 bg-slate-50
+        border border-slate-200 text-slate-800 bg-white
       `,
       footerLine: `
         mt-4 h-[3px] w-14 rounded-full
@@ -88,17 +88,17 @@ export const getProductCardTheme = (
     return {
       card: `
         group product-pdf relative flex flex-col overflow-hidden
-        rounded-[0.95rem] border border-slate-200 bg-white
-        shadow-[0_10px_30px_rgba(15,23,42,0.06)]
+        rounded-none border border-stone-300 bg-white
+        shadow-[0_10px_28px_rgba(120,83,38,0.10)]
         transition-all duration-300
       `,
       mediaWrap: `
-        relative px-4 pt-4
+        relative p-3 bg-white
       `,
       mediaInner: `
-        product-media relative aspect-[4/3] w-full overflow-hidden
-        rounded-[0.75rem] bg-stone-50
-        flex items-center justify-center border border-stone-100
+        product-media relative aspect-[4/5] w-full overflow-hidden
+        rounded-none bg-white
+        flex items-center justify-center border border-stone-200
       `,
       image: `
         w-full h-full object-contain mx-auto block
@@ -108,7 +108,7 @@ export const getProductCardTheme = (
         flex items-center justify-center text-white
       `,
       categoryBadge: `
-  absolute top-3 left-3 z-10 max-w-[62%] truncate
+  absolute top-3 left-3 z-10 max-w-[90%] truncate
   inline-flex items-center justify-center h-7 px-3 py-0 rounded-full
   text-[10px] leading-none font-bold
   uppercase tracking-[0.10em]
@@ -124,7 +124,7 @@ export const getProductCardTheme = (
         text-[14px] leading-none font-bold text-white
       `,
       body: `
-        relative px-5 pb-5 pt-4 text-center
+        relative px-5 pb-5 pt-4 text-center bg-white
       `,
       title: `
         text-[19px] leading-[1.18] font-bold font-serif text-stone-950
@@ -149,17 +149,17 @@ export const getProductCardTheme = (
   return {
     card: `
       group product-pdf relative flex flex-col overflow-hidden
-      rounded-xl border border-slate-200 bg-white
-      shadow-[0_8px_24px_rgba(15,23,42,0.05)]
+      rounded-none border border-slate-200 bg-white
+      shadow-none
       transition-all duration-300
     `,
     mediaWrap: `
-      relative p-3 pb-2
+      relative p-0
     `,
     mediaInner: `
-      product-media relative aspect-[4/3] w-full overflow-hidden
-      rounded-lg bg-white
-      flex items-center justify-center border border-slate-100
+      product-media relative aspect-square w-full overflow-hidden
+      rounded-none bg-slate-50
+      flex items-center justify-center border-b border-slate-100
     `,
     image: `
   relative z-[2]
@@ -170,7 +170,7 @@ export const getProductCardTheme = (
       flex items-center justify-center text-white
     `,
     categoryBadge: `
-absolute top-3 left-3 z-10 max-w-[62%] truncate
+absolute top-3 left-3 z-10 max-w-[90%] truncate
   inline-flex items-center justify-center h-7 px-3 py-0 rounded-full
   text-[10px] leading-none font-bold
   uppercase tracking-[0.08em]
@@ -186,7 +186,7 @@ absolute top-3 left-3 z-10 max-w-[62%] truncate
       text-[14px] leading-none font-extrabold text-white
     `,
     body: `
-      relative px-4 pb-4 pt-3
+      relative px-5 pb-5 pt-4
     `,
     title: `
       text-[17px] leading-[1.2] font-extrabold text-slate-950
@@ -254,11 +254,23 @@ export const getProductCardInlineStyles = (
         }
         : undefined;
 
-  const actionStyle = {
-    background: '#ffffff',
-    color: '#0f172a',
-    border: '1px solid #cbd5e1',
-  };
+  const actionStyle = templateId === 'modern'
+    ? {
+      background: primaryColor || '#2563eb',
+      color: '#ffffff',
+      border: '1px solid transparent',
+    }
+    : templateId === 'classic'
+      ? {
+        background: '#ffffff',
+        color: '#292524',
+        border: '1px solid #a8a29e',
+      }
+      : {
+        background: '#ffffff',
+        color: '#0f172a',
+        border: '1px solid #cbd5e1',
+      };
 
   const categoryBadgeStyle = {
     background: primaryColor || '#00000011',
