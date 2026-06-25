@@ -1586,14 +1586,17 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             ) as HTMLElement[]
           ).find(isElementVisibleForPdf);
 
-          const footerTop = footer
-            ? footer.getBoundingClientRect().top - pageTop
-            : maxHeightPx;
+          const footerHeight = footer
+            ? footer.getBoundingClientRect().height
+            : 0;
+          const availableBottom = footer
+            ? maxHeightPx - footerHeight - 18
+            : maxHeightPx * 0.97;
 
           return {
             gridTop: gridRect.top - pageTop,
             productBottom,
-            availableBottom: Math.min(maxHeightPx * 0.97, footerTop - 18),
+            availableBottom: Math.min(maxHeightPx * 0.97, availableBottom),
           };
         };
 
@@ -2352,12 +2355,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
           collapseGridParents(page);
           let currentHeight = getPdfContentHeight(page, grid);
 
-          if (currentHeight > pageHeightCssPx && rowsAdded > 0) {
+          if (currentHeight > pageHeightCssPx) {
             const fitted = await compactPageToFit(page, grid, pageHeightCssPx);
             currentHeight = getPdfContentHeight(page, grid);
             pageWasCompacted = true;
 
-            if (!fitted || currentHeight > pageHeightCssPx) {
+            if (rowsAdded > 0 && (!fitted || currentHeight > pageHeightCssPx)) {
               rowClones.forEach((clonedCard) => clonedCard.remove());
               break;
             }
@@ -2378,7 +2381,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         collapseGridParents(page);
 
         await waitMs(isIOS ? 200 : 50);
-        const shouldExpandPageCards = !isMobile || pageIndex > 0;
+        const shouldExpandPageCards = true;
 
         if (!pageWasCompacted && shouldExpandPageCards) {
           await expandPageToUseSpace(page, grid, pageHeightCssPx);
@@ -2457,10 +2460,8 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         // La primera página conserva el hero/header arriba.
         // Las demás páginas centran el bloque real de productos dentro del área útil A4,
         // evitando que cuando hay 1 o 2 tarjetas quede todo pegado arriba con mucho aire abajo.
-        const pageYmm =
-          pageIndex === 0
-            ? PDF_MARGIN_MM
-            : PDF_MARGIN_MM + Math.max(0, (usableHmm - pageHmm) / 2);
+        // Override: keep every generated PDF page aligned to the top margin.
+        const pageYmm = PDF_MARGIN_MM;
 
         pdf.addImage(
           imgData,
